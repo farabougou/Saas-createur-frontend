@@ -181,6 +181,8 @@ async function loadRequests(authHeaders) {
           <span class="badge">${r.status}</span>
           <strong>${r.request_type}</strong>
           <p class="muted">${r.prompt}</p>
+          ${r.response ? `<p>${r.response.replace(/\n/g, '<br>')}</p>` : ''}
+          ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
         </div>
       `
       )
@@ -203,6 +205,12 @@ el.formAiRequest.addEventListener('submit', async (e) => {
 
   const request_type = document.getElementById('request-type').value;
   const prompt = document.getElementById('request-prompt').value;
+  const submitButton = el.formAiRequest.querySelector('button');
+
+  // L'appel attend la réponse complète de Claude avant de répondre —
+  // ça peut prendre quelques secondes, on le montre à l'utilisateur.
+  submitButton.disabled = true;
+  submitButton.textContent = 'Génération en cours...';
 
   try {
     const res = await fetch(`${API_BASE_URL}/api/ai-requests`, {
@@ -222,11 +230,14 @@ el.formAiRequest.addEventListener('submit', async (e) => {
       throw new Error(data.error || 'Erreur lors de l\'envoi.');
     }
 
-    showMessage(el.aiRequestMessage, 'Requête envoyée !', 'success');
+    showMessage(el.aiRequestMessage, 'Réponse générée !', 'success');
     el.formAiRequest.reset();
     await loadRequests({ Authorization: `Bearer ${session.access_token}` });
   } catch (err) {
     showMessage(el.aiRequestMessage, err.message, 'error');
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Envoyer';
   }
 });
 
