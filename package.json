@@ -1,0 +1,16 @@
+{
+  "name": "saas-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site web (frontend) du SaaS créateurs de contenu — sert les fichiers statiques et parle au backend + à Supabase Auth.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

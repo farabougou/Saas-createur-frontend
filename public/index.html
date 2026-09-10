@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SaaS Créateurs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🎬 SaaS Créateurs</h1>
+      <nav id="nav">
+        <!-- Rempli en JavaScript selon que l'utilisateur est connecté ou non -->
+      </nav>
+    </header>
+
+    <!-- ==================== VUE PUBLIQUE (visiteur non connecté) ==================== -->
+    <div id="view-public">
+      <section id="plans-section">
+        <h2>Nos offres</h2>
+        <p class="muted">Choisis le plan adapté à ton usage.</p>
+        <div id="plans-grid" class="grid">
+          <p class="muted">Chargement des offres...</p>
+        </div>
+      </section>
+
+      <section id="auth-section">
+        <h2>Créer un compte ou se connecter</h2>
+        <div class="tabs">
+          <button id="tab-login" class="active">Connexion</button>
+          <button id="tab-signup">Inscription</button>
+        </div>
+
+        <form id="form-login">
+          <input type="email" id="login-email" placeholder="Email" required />
+          <input type="password" id="login-password" placeholder="Mot de passe" required />
+          <button type="submit">Se connecter</button>
+        </form>
+
+        <form id="form-signup" class="hidden">
+          <input type="email" id="signup-email" placeholder="Email" required />
+          <input type="password" id="signup-password" placeholder="Mot de passe (6 caractères min.)" required />
+          <button type="submit">Créer mon compte</button>
+        </form>
+
+        <div id="auth-message"></div>
+      </section>
+    </div>
+
+    <!-- ==================== VUE CONNECTÉE (espace utilisateur) ==================== -->
+    <div id="view-dashboard" class="hidden">
+      <section>
+        <h2>Mon espace</h2>
+        <div id="profile-card" class="card">
+          <p class="muted">Chargement du profil...</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Nouvelle requête IA</h2>
+        <form id="form-ai-request">
+          <input type="text" id="request-type" placeholder="Type (ex: script, description...)" required />
+          <input type="text" id="request-prompt" placeholder="Ta demande..." required />
+          <button type="submit">Envoyer</button>
+        </form>
+        <div id="ai-request-message"></div>
+      </section>
+
+      <section>
+        <h2>Historique</h2>
+        <div id="requests-list">
+          <p class="muted">Chargement...</p>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      SaaS Créateurs — propulsé par Supabase & Railway
+    </footer>
+  </div>
+
+  <!-- Client Supabase officiel (gère l'inscription, la connexion, les sessions) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
