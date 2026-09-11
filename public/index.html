@@ -59,9 +59,17 @@
 
       <section>
         <h2>Nouvelle requête IA</h2>
-        <form id="form-ai-request">
-          <input type="text" id="request-type" placeholder="Type (ex: script, description...)" required />
-          <input type="text" id="request-prompt" placeholder="Ta demande..." required />
+                <form id="form-ai-request">
+          <select id="request-type" required>
+            <option value="" disabled selected>Choisis un type de contenu</option>
+            <option value="legende_instagram">Légende Instagram</option>
+            <option value="script_tiktok">Script vidéo TikTok / Reels</option>
+            <option value="titre_youtube">Idées de titres YouTube</option>
+            <option value="description_youtube">Description YouTube (SEO)</option>
+            <option value="hashtags">Suggestions de hashtags</option>
+            <option value="idee_contenu">Idées de contenu</option>
+          </select>
+          <input type="text" id="request-prompt" placeholder="Ta demande (ex: recette de cuisine malienne)..." required />
           <button type="submit">Envoyer</button>
         </form>
         <div id="ai-request-message"></div>
