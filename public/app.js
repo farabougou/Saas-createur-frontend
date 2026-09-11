@@ -60,6 +60,8 @@ const el = {
   formAiRequest: document.getElementById('form-ai-request'),
   aiRequestMessage: document.getElementById('ai-request-message'),
   requestsList: document.getElementById('requests-list'),
+  formCreatorProfile: document.getElementById('form-creator-profile'),
+  creatorProfileMessage: document.getElementById('creator-profile-message'),
 };
 
 // Formate un prix stocké en "price_cents" (voir schéma Supabase). Le FCFA
@@ -193,8 +195,69 @@ async function loadDashboard() {
     el.profileCard.innerHTML = `<p class="muted">Erreur : ${err.message}</p>`;
   }
 
+  await loadCreatorProfile(authHeaders);
   await loadRequests(authHeaders);
 }
+
+// ---------------------------------------------------------------------
+// 6bis. Profil créateur : charge les infos existantes dans le formulaire,
+//    et les enregistre quand l'utilisateur soumet. Ce profil est ensuite
+//    injecté automatiquement par le serveur dans chaque génération IA.
+// ---------------------------------------------------------------------
+async function loadCreatorProfile(authHeaders) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/creator-profile`, { headers: authHeaders });
+    if (!res.ok) throw new Error('Erreur de chargement du profil créateur.');
+    const profile = await res.json();
+
+    if (profile) {
+      document.getElementById('profile-niche').value = profile.niche ?? '';
+      document.getElementById('profile-audience').value = profile.audience ?? '';
+      document.getElementById('profile-tone').value = profile.tone ?? '';
+      document.getElementById('profile-style-notes').value = profile.style_notes ?? '';
+    }
+  } catch (err) {
+    showMessage(el.creatorProfileMessage, err.message, 'error');
+  }
+}
+
+el.formCreatorProfile.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearMessage(el.creatorProfileMessage);
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return;
+
+  const niche = document.getElementById('profile-niche').value;
+  const audience = document.getElementById('profile-audience').value;
+  const tone = document.getElementById('profile-tone').value;
+  const style_notes = document.getElementById('profile-style-notes').value;
+  const submitButton = el.formCreatorProfile.querySelector('button');
+
+  submitButton.disabled = true;
+  submitButton.textContent = 'Enregistrement...';
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/creator-profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ niche, audience, tone, style_notes }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'enregistrement.');
+
+    showMessage(el.creatorProfileMessage, 'Profil enregistré !', 'success');
+  } catch (err) {
+    showMessage(el.creatorProfileMessage, err.message, 'error');
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Enregistrer mon profil';
+  }
+});
 
 // Regroupe les requêtes plates renvoyées par l'API en conversations
 // (mêmes conversation_id), triées de la plus récemment active à la plus
