@@ -144,8 +144,6 @@ el.formLogin.addEventListener('submit', async (e) => {
   if (error) {
     showMessage(el.authMessage, error.message, 'error');
   }
-  // Si ça réussit, onAuthStateChange (plus bas) bascule automatiquement
-  // vers le tableau de bord — pas besoin de le faire ici.
 });
 
 // ---------------------------------------------------------------------
@@ -164,7 +162,6 @@ async function loadDashboard() {
 
   const authHeaders = { Authorization: `Bearer ${session.access_token}` };
 
-  // Profil + abonnement.
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
     if (!res.ok) throw new Error('Erreur de chargement du profil.');
@@ -178,8 +175,33 @@ async function loadDashboard() {
     el.profileCard.innerHTML = `<p class="muted">Erreur : ${err.message}</p>`;
   }
 
-  // Historique des requêtes IA.
   await loadRequests(authHeaders);
+}
+
+// Regroupe les requêtes plates renvoyées par l'API en conversations
+// (mêmes conversation_id), triées de la plus récemment active à la plus
+// ancienne. Les anciennes requêtes sans conversation_id (créées avant
+// cette fonctionnalité) deviennent chacune leur propre mini-conversation.
+function groupByConversation(requests) {
+  const map = new Map();
+  for (const r of requests) {
+    const key = r.conversation_id || r.id;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(r);
+  }
+
+  const threads = Array.from(map.entries()).map(([key, turns]) => {
+    const sorted = [...turns].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    return {
+      conversationId: key,
+      requestType: sorted[0].request_type,
+      turns: sorted,
+      lastCreatedAt: sorted[sorted.length - 1].created_at,
+    };
+  });
+
+  threads.sort((a, b) => new Date(b.lastCreatedAt) - new Date(a.lastCreatedAt));
+  return threads;
 }
 
 async function loadRequests(authHeaders) {
@@ -193,27 +215,70 @@ async function loadRequests(authHeaders) {
       return;
     }
 
-    el.requestsList.innerHTML = requests
-      .map(
-        (r) => `
-        <div class="request-item">
-          <span class="badge">${r.status}</span>
-          <strong>${contentTypeLabel(r.request_type)}</strong>
-          <p class="muted">${r.prompt}</p>
-          ${r.response ? `<p>${r.response.replace(/\n/g, '<br>')}</p>` : ''}
-          ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
-        </div>
-      `
-      )
+    const threads = groupByConversation(requests);
+
+    el.requestsList.innerHTML = threads
+      .map((thread) => {
+        const turnsHtml = thread.turns
+          .map(
+            (r) => `
+            <div class="request-item">
+              <span class="badge">${r.status}</span>
+              <strong>${contentTypeLabel(r.request_type)}</strong>
+              <p class="muted">${r.prompt}</p>
+              ${r.response ? `<p>${r.response.replace(/\n/g, '<br>')}</p>` : ''}
+              ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
+            </div>
+          `
+          )
+          .join('');
+
+        const lastTurn = thread.turns[thread.turns.length - 1];
+        const canReply = lastTurn.status === 'completed';
+
+        const replyFormHtml = canReply
+          ? `
+            <form class="reply-form" data-conversation-id="${thread.conversationId}" data-request-type="${thread.requestType}">
+              <input type="text" class="reply-input" placeholder="Répondre dans cette conversation..." required />
+              <button type="submit">Répondre</button>
+            </form>
+          `
+          : '';
+
+        return `<div class="thread">${turnsHtml}${replyFormHtml}</div>`;
+      })
       .join('');
   } catch (err) {
     el.requestsList.innerHTML = `<p class="muted">Erreur : ${err.message}</p>`;
   }
 }
 
+// Envoie un message (nouvelle requête ou réponse dans une conversation) à
+// l'API, factorisé pour être utilisé par le formulaire principal et par
+// chaque formulaire de réponse généré dynamiquement.
+async function submitAiMessage({ request_type, prompt, conversation_id }) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) throw new Error('Session expirée, reconnecte-toi.');
+
+  const res = await fetch(`${API_BASE_URL}/api/ai-requests`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ request_type, prompt, conversation_id }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Erreur lors de l\'envoi.');
+  }
+  return data;
+}
+
 // ---------------------------------------------------------------------
-// 7. Envoi d'une nouvelle requête IA (soumise à la limite de 20 / 10 min,
-//    appliquée à la fois par l'API et par la base Supabase).
+// 7. Envoi d'une nouvelle requête IA (démarre toujours une nouvelle
+//    conversation — aucun conversation_id n'est envoyé).
 // ---------------------------------------------------------------------
 el.formAiRequest.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -226,32 +291,14 @@ el.formAiRequest.addEventListener('submit', async (e) => {
   const prompt = document.getElementById('request-prompt').value;
   const submitButton = el.formAiRequest.querySelector('button');
 
-  // L'appel attend la réponse complète de Claude avant de répondre —
-  // ça peut prendre quelques secondes, on le montre à l'utilisateur.
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/ai-requests`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ request_type, prompt }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      // Le backend renvoie 429 précisément quand la limite de 20/10min
-      // est atteinte (voir enforce_ai_request_rate_limit côté base).
-      throw new Error(data.error || 'Erreur lors de l\'envoi.');
-    }
-
+    await submitAiMessage({ request_type, prompt });
     showMessage(el.aiRequestMessage, 'Réponse générée !', 'success');
     el.formAiRequest.reset();
-    await loadRequests({ Authorization: `Bearer ${session.access_token}` });
+    await loadRequests({ Authorization: `Bearer ${(await supabaseClient.auth.getSession()).data.session.access_token}` });
   } catch (err) {
     showMessage(el.aiRequestMessage, err.message, 'error');
   } finally {
@@ -261,10 +308,38 @@ el.formAiRequest.addEventListener('submit', async (e) => {
 });
 
 // ---------------------------------------------------------------------
+// 7bis. Répondre dans une conversation existante. Les formulaires de
+//    réponse sont recréés à chaque rendu de l'historique, donc on utilise
+//    la délégation d'événements (un seul listener sur le conteneur).
+// ---------------------------------------------------------------------
+el.requestsList.addEventListener('submit', async (e) => {
+  const form = e.target.closest('.reply-form');
+  if (!form) return;
+  e.preventDefault();
+
+  const conversation_id = form.dataset.conversationId;
+  const request_type = form.dataset.requestType;
+  const input = form.querySelector('.reply-input');
+  const prompt = input.value;
+  const submitButton = form.querySelector('button');
+
+  submitButton.disabled = true;
+  submitButton.textContent = 'Génération en cours...';
+
+  try {
+    await submitAiMessage({ request_type, prompt, conversation_id });
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    await loadRequests({ Authorization: `Bearer ${session.access_token}` });
+  } catch (err) {
+    showMessage(el.aiRequestMessage, err.message, 'error');
+    submitButton.disabled = false;
+    submitButton.textContent = 'Répondre';
+  }
+});
+
+// ---------------------------------------------------------------------
 // 8. Bascule entre vue publique et tableau de bord selon l'état de
-//    connexion. Supabase déclenche cet événement automatiquement au
-//    chargement de la page (session existante ou non), puis à chaque
-//    connexion/déconnexion.
+//    connexion.
 // ---------------------------------------------------------------------
 supabaseClient.auth.onAuthStateChange((_event, session) => {
   if (session) {
