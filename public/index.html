@@ -57,8 +57,18 @@
         </div>
       </section>
 
-      <section>
-        <h2>Nouvelle requête IA</h2>
+            <section>
+        <h2>Mon profil créateur</h2>
+        <p class="muted">Ces infos sont utilisées automatiquement pour personnaliser chaque réponse de l'IA — pas besoin de les répéter à chaque demande.</p>
+        <form id="form-creator-profile">
+          <input type="text" id="profile-niche" placeholder="Ta niche / thématique (ex: cuisine malienne, tech, mode...)" />
+          <input type="text" id="profile-audience" placeholder="Ton audience cible (ex: jeunes 18-25 ans à Bamako...)" />
+          <input type="text" id="profile-tone" placeholder="Ton de voix souhaité (ex: chaleureux et direct, humoristique...)" />
+          <textarea id="profile-style-notes" placeholder="Notes de style supplémentaires (optionnel)" rows="3"></textarea>
+          <button type="submit">Enregistrer mon profil</button>
+        </form>
+        <div id="creator-profile-message"></div>
+      </section>
                 <form id="form-ai-request">
                     <select id="request-type" required>
             <option value="" disabled selected>Choisis un type de contenu</option>
