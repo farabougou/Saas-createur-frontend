@@ -8,6 +8,21 @@ const supabaseClient = window.supabase.createClient(
 
 const API_BASE_URL = window.APP_CONFIG.API_BASE_URL;
 
+// Noms lisibles pour chaque type de contenu (doit correspondre aux
+// <option value="..."> du formulaire dans index.html).
+const CONTENT_TYPE_LABELS = {
+  legende_instagram: 'Légende Instagram',
+  script_tiktok: 'Script vidéo TikTok / Reels',
+  titre_youtube: 'Idées de titres YouTube',
+  description_youtube: 'Description YouTube (SEO)',
+  hashtags: 'Suggestions de hashtags',
+  idee_contenu: 'Idées de contenu',
+};
+
+function contentTypeLabel(type) {
+  return CONTENT_TYPE_LABELS[type] || type;
+}
+
 // Éléments de la page qu'on va manipuler souvent.
 const el = {
   nav: document.getElementById('nav'),
@@ -179,7 +194,7 @@ async function loadRequests(authHeaders) {
         (r) => `
         <div class="request-item">
           <span class="badge">${r.status}</span>
-          <strong>${r.request_type}</strong>
+          <strong>${contentTypeLabel(r.request_type)}</strong>
           <p class="muted">${r.prompt}</p>
           ${r.response ? `<p>${r.response.replace(/\n/g, '<br>')}</p>` : ''}
           ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
