@@ -1,14 +1,17 @@
 :root {
   --bg: #0f1115;
   --card: #171a21;
+  --card-hover: #1d212a;
   --border: #2a2e38;
   --text: #f2f3f5;
   --muted: #9aa0ab;
   --accent: #7c5cff;
   --accent-hover: #6a4ce0;
   --success: #2ecc71;
+  --warning: #ffc107;
   --danger: #ff5c5c;
-  --radius: 12px;
+  --radius: 14px;
+  --radius-sm: 8px;
 }
 
 * { box-sizing: border-box; }
@@ -18,7 +21,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
 .wrap {
@@ -31,15 +35,21 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 0;
+  padding: 22px 0;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  background: rgba(15, 17, 21, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 10;
 }
 
 header h1 {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 nav { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -48,25 +58,31 @@ button, .btn {
   background: var(--accent);
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  padding: 10px 18px;
   font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
 button:hover, .btn:hover { background: var(--accent-hover); }
+button:active, .btn:active { transform: scale(0.98); }
 
 button.secondary {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
+  font-weight: 500;
 }
 
-button:disabled { opacity: 0.6; cursor: not-allowed; }
+button.secondary:hover { background: var(--card-hover); }
+
+button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 section { padding: 40px 0; }
 
-section h2 { margin-top: 0; }
+section h2 { margin-top: 0; letter-spacing: -0.01em; }
 
 .grid {
   display: grid;
@@ -78,8 +94,17 @@ section h2 { margin-top: 0; }
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 22px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
+
+.card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.card h3 { margin-top: 0; }
 
 .plan-price {
   font-size: 1.6rem;
@@ -99,16 +124,22 @@ form {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: 360px;
+  max-width: 380px;
 }
 
-input {
+input, select {
   background: var(--card);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
   font-size: 0.95rem;
+  font-family: inherit;
+}
+
+input:focus, select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -118,7 +149,7 @@ input {
 
 .message {
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   margin-top: 8px;
 }
@@ -128,23 +159,110 @@ input {
 
 .hidden { display: none !important; }
 
+/* ---------------------------------------------------------------------
+   Historique : chaque conversation est regroupée dans une "carte" .thread,
+   avec ses échanges (.request-item) et un champ de réponse en bas.
+   --------------------------------------------------------------------- */
+.thread {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin-bottom: 16px;
+}
+
 .request-item {
   border-bottom: 1px solid var(--border);
-  padding: 10px 0;
+  padding: 14px 0;
 }
+
+.request-item:first-child { padding-top: 0; }
+.request-item:last-child { border-bottom: none; padding-bottom: 0; }
 
 .badge {
   display: inline-block;
-  font-size: 0.75rem;
-  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
   border-radius: 999px;
   background: var(--border);
   color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
 }
+
+.badge.status-completed { background: rgba(46, 204, 113, 0.15); color: var(--success); }
+.badge.status-pending { background: rgba(255, 193, 7, 0.15); color: var(--warning); }
+.badge.status-failed { background: rgba(255, 92, 92, 0.15); color: var(--danger); }
+
+.request-item strong { display: block; margin-bottom: 2px; }
+
+.reply-form {
+  flex-direction: row;
+  max-width: none;
+  margin-top: 14px;
+  gap: 8px;
+}
+
+.reply-form input { flex: 1; }
+
+/* ---------------------------------------------------------------------
+   Contenu généré par l'IA, transformé en HTML par marked.js — on stylise
+   chaque élément pour un rendu propre et lisible.
+   --------------------------------------------------------------------- */
+.ai-response { margin-top: 8px; }
+
+.ai-response h1, .ai-response h2, .ai-response h3 {
+  margin: 16px 0 6px;
+  line-height: 1.3;
+}
+
+.ai-response h1 { font-size: 1.2rem; }
+.ai-response h2 { font-size: 1.08rem; }
+.ai-response h3 { font-size: 1rem; }
+
+.ai-response p { margin: 8px 0; }
+
+.ai-response strong { color: var(--text); font-weight: 700; }
+
+.ai-response ul, .ai-response ol {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.ai-response li { margin: 4px 0; }
+
+.ai-response code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.ai-response blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 8px 0;
+  padding-left: 12px;
+  color: var(--muted);
+}
+
+.ai-response a { color: var(--accent); }
 
 footer {
   text-align: center;
   padding: 30px 0;
   color: var(--muted);
   font-size: 0.85rem;
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+}
+
+/* ---------------------------------------------------------------------
+   Petits écrans (mobile).
+   --------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  section { padding: 28px 0; }
+  .card, .thread { padding: 16px; }
+  header h1 { font-size: 1.1rem; }
 }
