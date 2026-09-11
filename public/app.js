@@ -17,6 +17,10 @@ const CONTENT_TYPE_LABELS = {
   description_youtube: 'Description YouTube (SEO)',
   hashtags: 'Suggestions de hashtags',
   idee_contenu: 'Idées de contenu',
+  bio_profil: 'Bio de profil',
+  reponse_commentaire: 'Réponse à un commentaire',
+  story_instagram: 'Plan de story Instagram',
+  collab_pitch: 'Message de proposition de collaboration',
 };
 
 function contentTypeLabel(type) {
