@@ -23,8 +23,26 @@ const CONTENT_TYPE_LABELS = {
   collab_pitch: 'Message de proposition de collaboration',
 };
 
+// Noms lisibles pour chaque statut, affichés dans le badge de l'historique.
+const STATUS_LABELS = {
+  pending: 'En cours',
+  completed: 'Terminé',
+  failed: 'Échec',
+};
+
 function contentTypeLabel(type) {
   return CONTENT_TYPE_LABELS[type] || type;
+}
+
+function statusLabel(status) {
+  return STATUS_LABELS[status] || status;
+}
+
+// Transforme le texte formaté renvoyé par l'IA (titres, gras, listes) en
+// vrai HTML grâce à marked.js, chargé dans index.html.
+function renderAiResponse(text) {
+  if (!text) return '';
+  return window.marked.parse(text);
 }
 
 // Éléments de la page qu'on va manipuler souvent.
@@ -180,8 +198,7 @@ async function loadDashboard() {
 
 // Regroupe les requêtes plates renvoyées par l'API en conversations
 // (mêmes conversation_id), triées de la plus récemment active à la plus
-// ancienne. Les anciennes requêtes sans conversation_id (créées avant
-// cette fonctionnalité) deviennent chacune leur propre mini-conversation.
+// ancienne.
 function groupByConversation(requests) {
   const map = new Map();
   for (const r of requests) {
@@ -223,10 +240,10 @@ async function loadRequests(authHeaders) {
           .map(
             (r) => `
             <div class="request-item">
-              <span class="badge">${r.status}</span>
+              <span class="badge status-${r.status}">${statusLabel(r.status)}</span>
               <strong>${contentTypeLabel(r.request_type)}</strong>
               <p class="muted">${r.prompt}</p>
-              ${r.response ? `<p>${r.response.replace(/\n/g, '<br>')}</p>` : ''}
+              ${r.response ? `<div class="ai-response">${renderAiResponse(r.response)}</div>` : ''}
               ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
             </div>
           `
@@ -298,7 +315,8 @@ el.formAiRequest.addEventListener('submit', async (e) => {
     await submitAiMessage({ request_type, prompt });
     showMessage(el.aiRequestMessage, 'Réponse générée !', 'success');
     el.formAiRequest.reset();
-    await loadRequests({ Authorization: `Bearer ${(await supabaseClient.auth.getSession()).data.session.access_token}` });
+    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
+    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
   } catch (err) {
     showMessage(el.aiRequestMessage, err.message, 'error');
   } finally {
