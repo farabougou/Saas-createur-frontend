@@ -230,17 +230,57 @@ async function loadTikTokStatus(authHeaders) {
     const { connected } = await res.json();
 
     if (connected) {
-      el.tiktokCard.innerHTML = `
-        <p>✅ Compte TikTok connecté</p>
-        <button class="secondary" id="btn-disconnect-tiktok">Déconnecter</button>
-      `;
-      document.getElementById('btn-disconnect-tiktok').addEventListener('click', disconnectTikTok);
+      el.tiktokCard.innerHTML = `<p class="muted">Chargement du profil TikTok...</p>`;
+      await loadTikTokProfile(authHeaders);
     } else {
       el.tiktokCard.innerHTML = `<button id="btn-connect-tiktok">Connecter mon compte TikTok</button>`;
       document.getElementById('btn-connect-tiktok').addEventListener('click', connectTikTok);
     }
   } catch (err) {
     el.tiktokCard.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
+  }
+}
+
+async function loadTikTokProfile(authHeaders) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/tiktok/profile`, { headers: authHeaders });
+    if (!res.ok) throw new Error('Impossible de charger le profil TikTok.');
+    const { profile, videos } = await res.json();
+
+    const videosHtml = videos && videos.length
+      ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-top:12px;">
+          ${videos.map((v) => `
+            <div style="position:relative;border-radius:8px;overflow:hidden;">
+              <img src="${v.cover_image_url}" alt="${(v.title || 'Vidéo TikTok').replace(/"/g, '&quot;')}" style="width:100%;display:block;aspect-ratio:9/16;object-fit:cover;" />
+              <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;padding:2px 4px;">
+                👁 ${v.view_count ?? 0}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `
+      : `<p class="muted" style="margin-top:8px;">Aucune vidéo publique trouvée.</p>`;
+
+    el.tiktokCard.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;">
+        <img src="${profile.avatar_url}" alt="Avatar TikTok" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" />
+        <div style="flex:1;">
+          <strong>${profile.display_name || 'Compte TikTok'}</strong>
+          <p class="muted" style="margin:0;">✅ Connecté</p>
+        </div>
+        <button class="secondary" id="btn-disconnect-tiktok">Déconnecter</button>
+      </div>
+      ${videosHtml}
+    `;
+    document.getElementById('btn-disconnect-tiktok').addEventListener('click', disconnectTikTok);
+  } catch (err) {
+    el.tiktokCard.innerHTML = `
+      <p>✅ Compte TikTok connecté</p>
+      <p class="muted">(Détails indisponibles : ${friendlyErrorMessage(err)})</p>
+      <button class="secondary" id="btn-disconnect-tiktok">Déconnecter</button>
+    `;
+    document.getElementById('btn-disconnect-tiktok').addEventListener('click', disconnectTikTok);
   }
 }
 
