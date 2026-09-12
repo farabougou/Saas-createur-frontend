@@ -74,6 +74,7 @@ const el = {
   formReply: document.getElementById('form-reply'),
   replyInput: document.getElementById('reply-input'),
   replyMessage: document.getElementById('reply-message'),
+  tiktokCard: document.getElementById('tiktok-card'),
 };
 
 let allThreads = [];
@@ -198,6 +199,7 @@ async function loadDashboard() {
   }
 
   await loadCreatorProfile(authHeaders);
+  await loadTikTokStatus(authHeaders);
   showHomeScreen();
   await loadRequests(authHeaders);
 }
@@ -218,6 +220,56 @@ async function loadCreatorProfile(authHeaders) {
     showMessage(el.creatorProfileMessage, friendlyErrorMessage(err), 'error');
   }
 }
+
+// --------------------- Connexion TikTok ---------------------
+
+async function loadTikTokStatus(authHeaders) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/tiktok/status`, { headers: authHeaders });
+    if (!res.ok) throw new Error('Erreur de chargement du statut TikTok.');
+    const { connected } = await res.json();
+
+    if (connected) {
+      el.tiktokCard.innerHTML = `
+        <p>✅ Compte TikTok connecté</p>
+        <button class="secondary" id="btn-disconnect-tiktok">Déconnecter</button>
+      `;
+      document.getElementById('btn-disconnect-tiktok').addEventListener('click', disconnectTikTok);
+    } else {
+      el.tiktokCard.innerHTML = `<button id="btn-connect-tiktok">Connecter mon compte TikTok</button>`;
+      document.getElementById('btn-connect-tiktok').addEventListener('click', connectTikTok);
+    }
+  } catch (err) {
+    el.tiktokCard.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
+  }
+}
+
+async function connectTikTok() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return;
+  window.location.href = `${API_BASE_URL}/api/tiktok/auth?token=${encodeURIComponent(session.access_token)}`;
+}
+
+async function disconnectTikTok() {
+  const confirmed = window.confirm('Déconnecter ton compte TikTok ?');
+  if (!confirmed) return;
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/tiktok/disconnect`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (!res.ok && res.status !== 204) throw new Error('Erreur lors de la déconnexion.');
+    await loadTikTokStatus({ Authorization: `Bearer ${session.access_token}` });
+  } catch (err) {
+    alert(friendlyErrorMessage(err));
+  }
+}
+
+// --------------------------------------------------------------
 
 el.formCreatorProfile.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -598,5 +650,15 @@ supabaseClient.auth.onAuthStateChange((_event, session) => {
     el.nav.innerHTML = '';
   }
 });
+
+// Affiche un message après le retour de la connexion TikTok (succès ou échec)
+const tiktokParam = new URLSearchParams(window.location.search).get('tiktok');
+if (tiktokParam === 'success') {
+  alert('Compte TikTok connecté avec succès !');
+  window.history.replaceState({}, '', window.location.pathname);
+} else if (tiktokParam === 'error') {
+  alert('La connexion TikTok a échoué. Réessaie.');
+  window.history.replaceState({}, '', window.location.pathname);
+}
 
 loadPlans();
