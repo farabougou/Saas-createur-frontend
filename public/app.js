@@ -20,6 +20,7 @@ const CONTENT_TYPE_LABELS = {
   story_instagram: 'Plan de story Instagram',
   collab_pitch: 'Message de proposition de collaboration',
   verification_publication: 'Vérification avant publication',
+  analyse_video: 'Analyse de vidéo TikTok',
 };
 
 function contentTypeLabel(type) {
@@ -183,7 +184,7 @@ async function loadDashboard() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
     if (!res.ok) throw new Error('Erreur de chargement du profil.');
-        const { profile, subscription, usage } = await res.json();
+    const { profile, subscription, usage } = await res.json();
 
     const quotaText = usage.quota != null
       ? `${usage.requestsUsed} / ${usage.quota} requêtes utilisées ce mois`
@@ -256,6 +257,16 @@ async function loadTikTokProfile(authHeaders) {
               <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;padding:2px 4px;">
                 👁 ${v.view_count ?? 0}
               </div>
+              <button
+                class="btn-analyse-video"
+                data-title="${(v.title || 'Sans titre').replace(/"/g, '&quot;')}"
+                data-views="${v.view_count ?? 0}"
+                data-likes="${v.like_count ?? 0}"
+                data-comments="${v.comment_count ?? 0}"
+                data-shares="${v.share_count ?? 0}"
+                title="Analyser cette vidéo"
+                style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:4px;font-size:13px;line-height:1;padding:4px 6px;cursor:pointer;"
+              >🔍</button>
             </div>
           `).join('')}
         </div>
@@ -265,11 +276,10 @@ async function loadTikTokProfile(authHeaders) {
     el.tiktokCard.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;">
         <img src="${profile.avatar_url}" alt="Avatar TikTok" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" />
-                <div style="flex:1;">
+        <div style="flex:1;">
           <strong>${profile.display_name || 'Compte TikTok'}</strong>
           <p class="muted" style="margin:0;">✅ Connecté</p>
           <p class="muted" style="margin:2px 0 0;font-size:12px;">
-                      <p class="muted" style="margin:2px 0 0;font-size:12px;">
             ${(profile.follower_count ?? 0).toLocaleString('fr-FR')} abonnés · ${(profile.likes_count ?? 0).toLocaleString('fr-FR')} likes · ${profile.video_count ?? 0} vidéos
           </p>
           <p class="muted" style="margin:2px 0 0;font-size:11px;">
@@ -283,6 +293,16 @@ async function loadTikTokProfile(authHeaders) {
       ${videosHtml}
     `;
     document.getElementById('btn-disconnect-tiktok').addEventListener('click', disconnectTikTok);
+
+    // Bouton "🔍" sous chaque vignette : lance une analyse IA de cette
+    // vidéo précise, avec son titre et ses statistiques déjà remplis.
+    document.querySelectorAll('.btn-analyse-video').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const { title, views, likes, comments, shares } = btn.dataset;
+        const prompt = `Analyse cette vidéo TikTok :\n- Titre : "${title}"\n- Vues : ${views}\n- Likes : ${likes}\n- Commentaires : ${comments}\n- Partages : ${shares}`;
+        startAiRequest('analyse_video', prompt);
+      });
+    });
   } catch (err) {
     el.tiktokCard.innerHTML = `
       <p>✅ Compte TikTok connecté</p>
@@ -590,20 +610,13 @@ async function streamAiMessage({ request_type, prompt, conversation_id, onChunk 
   return fullText;
 }
 
-el.formAiRequest.addEventListener('submit', async (e) => {
-  e.preventDefault();
+// Lance une nouvelle requête IA à partir de n'importe où dans l'interface
+// (formulaire principal, ou bouton "Analyser cette vidéo" sur une vignette
+// TikTok) : ouvre une nouvelle conversation, affiche la réponse au fur et à
+// mesure, puis recharge l'historique. Renvoie true en cas de succès.
+async function startAiRequest(request_type, prompt) {
   clearMessage(el.aiRequestMessage);
-
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session) return;
-
-  const request_type = document.getElementById('request-type').value;
-  const prompt = document.getElementById('request-prompt').value;
-  const submitButton = el.formAiRequest.querySelector('button');
   const newConversationId = crypto.randomUUID();
-
-  submitButton.disabled = true;
-  submitButton.textContent = 'Génération en cours...';
 
   selectedConversationId = newConversationId;
   el.homeScreen.classList.add('hidden');
@@ -627,16 +640,33 @@ el.formAiRequest.addEventListener('submit', async (e) => {
       },
     });
 
-    el.formAiRequest.reset();
     const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
     await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
+    return true;
   } catch (err) {
     showHomeScreen();
     showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
-  } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = 'Envoyer';
+    return false;
   }
+}
+
+el.formAiRequest.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const request_type = document.getElementById('request-type').value;
+  const prompt = document.getElementById('request-prompt').value;
+  const submitButton = el.formAiRequest.querySelector('button');
+
+  submitButton.disabled = true;
+  submitButton.textContent = 'Génération en cours...';
+
+  const success = await startAiRequest(request_type, prompt);
+  if (success) {
+    el.formAiRequest.reset();
+  }
+
+  submitButton.disabled = false;
+  submitButton.textContent = 'Envoyer';
 });
 
 el.formReply.addEventListener('submit', async (e) => {
