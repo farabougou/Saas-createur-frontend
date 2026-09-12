@@ -18,7 +18,8 @@ const CONTENT_TYPE_LABELS = {
   bio_profil: 'Bio de profil',
   reponse_commentaire: 'Réponse à un commentaire',
   story_instagram: 'Plan de story Instagram',
-  collab_pitch: 'Message de proposition de collaboration',
+    collab_pitch: 'Message de proposition de collaboration',
+  verification_publication: 'Vérification avant publication',
 };
 
 function contentTypeLabel(type) {
