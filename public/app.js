@@ -183,7 +183,7 @@ async function loadDashboard() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
     if (!res.ok) throw new Error('Erreur de chargement du profil.');
-    const { profile, subscription, usage } = await res.json();
+        const { profile, videos, growth } = await res.json();
 
     const quotaText = usage.quota != null
       ? `${usage.requestsUsed} / ${usage.quota} requêtes utilisées ce mois`
@@ -269,7 +269,13 @@ async function loadTikTokProfile(authHeaders) {
           <strong>${profile.display_name || 'Compte TikTok'}</strong>
           <p class="muted" style="margin:0;">✅ Connecté</p>
           <p class="muted" style="margin:2px 0 0;font-size:12px;">
+                      <p class="muted" style="margin:2px 0 0;font-size:12px;">
             ${(profile.follower_count ?? 0).toLocaleString('fr-FR')} abonnés · ${(profile.likes_count ?? 0).toLocaleString('fr-FR')} likes · ${profile.video_count ?? 0} vidéos
+          </p>
+          <p class="muted" style="margin:2px 0 0;font-size:11px;">
+            ${growth
+              ? `Depuis le ${new Date(growth.sinceDate).toLocaleDateString('fr-FR')} : ${growth.followerDelta >= 0 ? '+' : ''}${growth.followerDelta} abonnés, ${growth.likesDelta >= 0 ? '+' : ''}${growth.likesDelta} likes`
+              : 'Le suivi de croissance démarre aujourd\'hui — reviens demain pour voir l\'évolution.'}
           </p>
         </div>
         <button class="secondary" id="btn-disconnect-tiktok">Déconnecter</button>
