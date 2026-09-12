@@ -48,17 +48,81 @@
       </section>
     </div>
 
-    <!-- ==================== VUE CONNECTÉE (espace utilisateur) ==================== -->
+    <!-- ==================== VUE CONNECTÉE (espace utilisateur, façon Claude) ==================== -->
     <div id="view-dashboard" class="hidden">
-      <section>
-        <h2>Mon espace</h2>
+      <div class="app-layout">
+        <aside class="sidebar">
+          <button id="btn-new-conversation" class="btn-new-conversation">+ Nouvelle conversation</button>
+          <div id="conversations-list" class="conversations-list">
+            <p class="muted" style="padding:10px 12px;">Chargement...</p>
+          </div>
+          <div class="sidebar-footer">
+            <button id="btn-open-profile" class="sidebar-user">
+              <span id="sidebar-user-email">...</span>
+              <span class="muted">Profil &amp; paramètres</span>
+            </button>
+          </div>
+        </aside>
+
+        <main class="main-panel">
+          <!-- Écran d'accueil : aucune conversation sélectionnée -->
+          <div id="home-screen">
+            <h2>Qu'est-ce qu'on crée aujourd'hui ?</h2>
+            <form id="form-ai-request" class="new-request-form">
+              <select id="request-type" required>
+                <option value="" disabled selected>Choisis un type de contenu</option>
+                <option value="legende_instagram">Légende Instagram</option>
+                <option value="script_tiktok">Script vidéo TikTok / Reels</option>
+                <option value="titre_youtube">Idées de titres YouTube</option>
+                <option value="description_youtube">Description YouTube (SEO)</option>
+                <option value="hashtags">Suggestions de hashtags</option>
+                <option value="idee_contenu">Idées de contenu</option>
+                <option value="bio_profil">Bio de profil</option>
+                <option value="reponse_commentaire">Réponse à un commentaire</option>
+                <option value="story_instagram">Plan de story Instagram</option>
+                <option value="collab_pitch">Message de proposition de collaboration</option>
+              </select>
+              <textarea id="request-prompt" placeholder="Ta demande (ex: recette de cuisine malienne)..." rows="3" required></textarea>
+              <button type="submit">Envoyer</button>
+            </form>
+            <div id="ai-request-message"></div>
+          </div>
+
+          <!-- Vue d'une conversation sélectionnée -->
+          <div id="conversation-view" class="hidden">
+            <div id="conversation-thread"></div>
+            <form id="form-reply" class="reply-form-main hidden">
+              <input type="text" id="reply-input" placeholder="Répondre..." required />
+              <button type="submit">Envoyer</button>
+            </form>
+            <div id="reply-message"></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <footer>
+      SaaS Créateurs — propulsé par Supabase & Railway
+    </footer>
+  </div>
+
+  <!-- Fenêtre Profil & paramètres -->
+  <div id="profile-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Profil &amp; paramètres</h2>
+        <button id="btn-close-profile" class="btn-close">✕</button>
+      </div>
+
+      <section class="modal-section">
+        <h3>Mon compte</h3>
         <div id="profile-card" class="card">
           <p class="muted">Chargement du profil...</p>
         </div>
       </section>
 
-            <section>
-        <h2>Mon profil créateur</h2>
+      <section class="modal-section">
+        <h3>Mon profil créateur</h3>
         <p class="muted">Ces infos sont utilisées automatiquement pour personnaliser chaque réponse de l'IA — pas besoin de les répéter à chaque demande.</p>
         <form id="form-creator-profile">
           <input type="text" id="profile-niche" placeholder="Ta niche / thématique (ex: cuisine malienne, tech, mode...)" />
@@ -69,42 +133,10 @@
         </form>
         <div id="creator-profile-message"></div>
       </section>
-            <section>
-        <h2>Nouvelle requête IA</h2>
-                <form id="form-ai-request">
-                    <select id="request-type" required>
-            <option value="" disabled selected>Choisis un type de contenu</option>
-            <option value="legende_instagram">Légende Instagram</option>
-            <option value="script_tiktok">Script vidéo TikTok / Reels</option>
-            <option value="titre_youtube">Idées de titres YouTube</option>
-            <option value="description_youtube">Description YouTube (SEO)</option>
-            <option value="hashtags">Suggestions de hashtags</option>
-            <option value="idee_contenu">Idées de contenu</option>
-            <option value="bio_profil">Bio de profil</option>
-            <option value="reponse_commentaire">Réponse à un commentaire</option>
-            <option value="story_instagram">Plan de story Instagram</option>
-            <option value="collab_pitch">Message de proposition de collaboration</option>
-          </select>
-          <input type="text" id="request-prompt" placeholder="Ta demande (ex: recette de cuisine malienne)..." required />
-          <button type="submit">Envoyer</button>
-        </form>
-        <div id="ai-request-message"></div>
-      </section>
-
-      <section>
-        <h2>Historique</h2>
-        <div id="requests-list">
-          <p class="muted">Chargement...</p>
-        </div>
-      </section>
     </div>
-
-    <footer>
-      SaaS Créateurs — propulsé par Supabase & Railway
-    </footer>
   </div>
 
-    <!-- Client Supabase officiel (gère l'inscription, la connexion, les sessions) -->
+  <!-- Client Supabase officiel (gère l'inscription, la connexion, les sessions) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <!-- marked.js : transforme le texte formaté (titres, gras, listes) de l'IA en vrai HTML -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
