@@ -23,19 +23,8 @@ const CONTENT_TYPE_LABELS = {
   collab_pitch: 'Message de proposition de collaboration',
 };
 
-// Noms lisibles pour chaque statut, affichés dans le badge de l'historique.
-const STATUS_LABELS = {
-  pending: 'En cours',
-  completed: 'Terminé',
-  failed: 'Échec',
-};
-
 function contentTypeLabel(type) {
   return CONTENT_TYPE_LABELS[type] || type;
-}
-
-function statusLabel(status) {
-  return STATUS_LABELS[status] || status;
 }
 
 // Transforme le texte formaté renvoyé par l'IA (titres, gras, listes) en
@@ -59,10 +48,25 @@ const el = {
   profileCard: document.getElementById('profile-card'),
   formAiRequest: document.getElementById('form-ai-request'),
   aiRequestMessage: document.getElementById('ai-request-message'),
-  requestsList: document.getElementById('requests-list'),
   formCreatorProfile: document.getElementById('form-creator-profile'),
   creatorProfileMessage: document.getElementById('creator-profile-message'),
+  sidebarUserEmail: document.getElementById('sidebar-user-email'),
+  btnOpenProfile: document.getElementById('btn-open-profile'),
+  btnCloseProfile: document.getElementById('btn-close-profile'),
+  profileModal: document.getElementById('profile-modal'),
+  btnNewConversation: document.getElementById('btn-new-conversation'),
+  conversationsList: document.getElementById('conversations-list'),
+  homeScreen: document.getElementById('home-screen'),
+  conversationView: document.getElementById('conversation-view'),
+  conversationThread: document.getElementById('conversation-thread'),
+  formReply: document.getElementById('form-reply'),
+  replyInput: document.getElementById('reply-input'),
+  replyMessage: document.getElementById('reply-message'),
 };
+
+// État : liste des conversations chargées, et laquelle est ouverte.
+let allThreads = [];
+let selectedConversationId = null;
 
 // Formate un prix stocké en "price_cents" (voir schéma Supabase). Le FCFA
 // n'ayant pas de sous-unité, on affiche juste le nombre tel quel.
@@ -174,13 +178,15 @@ async function logout() {
 }
 
 // ---------------------------------------------------------------------
-// 6. Espace utilisateur connecté : profil + abonnement + historique.
+// 6. Espace utilisateur connecté : profil + abonnement + conversations.
 // ---------------------------------------------------------------------
 async function loadDashboard() {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) return;
 
   const authHeaders = { Authorization: `Bearer ${session.access_token}` };
+
+  el.sidebarUserEmail.textContent = session.user.email;
 
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
@@ -196,6 +202,7 @@ async function loadDashboard() {
   }
 
   await loadCreatorProfile(authHeaders);
+  showHomeScreen();
   await loadRequests(authHeaders);
 }
 
@@ -259,6 +266,22 @@ el.formCreatorProfile.addEventListener('submit', async (e) => {
   }
 });
 
+// Ouvre / ferme la fenêtre Profil & paramètres.
+el.btnOpenProfile.addEventListener('click', () => {
+  el.profileModal.classList.remove('hidden');
+});
+el.btnCloseProfile.addEventListener('click', () => {
+  el.profileModal.classList.add('hidden');
+});
+el.profileModal.addEventListener('click', (e) => {
+  if (e.target === el.profileModal) el.profileModal.classList.add('hidden');
+});
+
+// ---------------------------------------------------------------------
+// 6ter. Barre latérale : liste des conversations + navigation entre
+//    l'écran d'accueil et une conversation ouverte.
+// ---------------------------------------------------------------------
+
 // Regroupe les requêtes plates renvoyées par l'API en conversations
 // (mêmes conversation_id), triées de la plus récemment active à la plus
 // ancienne.
@@ -290,53 +313,97 @@ async function loadRequests(authHeaders) {
     if (!res.ok) throw new Error('Erreur de chargement de l\'historique.');
     const requests = await res.json();
 
-    if (requests.length === 0) {
-      el.requestsList.innerHTML = '<p class="muted">Aucune requête pour l\'instant.</p>';
-      return;
+    allThreads = groupByConversation(requests);
+    renderSidebar();
+
+    if (selectedConversationId) {
+      const stillExists = allThreads.some((t) => t.conversationId === selectedConversationId);
+      if (stillExists) {
+        renderConversationThread();
+      } else {
+        showHomeScreen();
+      }
     }
-
-    const threads = groupByConversation(requests);
-
-    el.requestsList.innerHTML = threads
-      .map((thread) => {
-        const turnsHtml = thread.turns
-          .map(
-            (r) => `
-            <div class="request-item">
-              <span class="badge status-${r.status}">${statusLabel(r.status)}</span>
-              <strong>${contentTypeLabel(r.request_type)}</strong>
-              <p class="muted">${r.prompt}</p>
-              ${r.response ? `<div class="ai-response">${renderAiResponse(r.response)}</div>` : ''}
-              ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
-            </div>
-          `
-          )
-          .join('');
-
-        const lastTurn = thread.turns[thread.turns.length - 1];
-        const canReply = lastTurn.status === 'completed';
-
-        const replyFormHtml = canReply
-          ? `
-            <form class="reply-form" data-conversation-id="${thread.conversationId}" data-request-type="${thread.requestType}">
-              <input type="text" class="reply-input" placeholder="Répondre dans cette conversation..." required />
-              <button type="submit">Répondre</button>
-            </form>
-          `
-          : '';
-
-        return `<div class="thread">${turnsHtml}${replyFormHtml}</div>`;
-      })
-      .join('');
   } catch (err) {
-    el.requestsList.innerHTML = `<p class="muted">Erreur : ${err.message}</p>`;
+    el.conversationsList.innerHTML = `<p class="muted" style="padding:10px 12px;">Erreur : ${err.message}</p>`;
   }
 }
 
-// Envoie un message (nouvelle requête ou réponse dans une conversation) à
-// l'API et LIT LA RÉPONSE EN STREAMING : Claude écrit sa réponse petit à
-// petit, et onChunk(text) est appelé à chaque morceau reçu, pour un effet
-// "en train d'écrire" en direct. Retourne le texte complet une fois fini.
+function renderSidebar() {
+  if (allThreads.length === 0) {
+    el.conversationsList.innerHTML = '<p class="muted" style="padding:10px 12px;">Aucune conversation.</p>';
+    return;
+  }
+
+  el.conversationsList.innerHTML = allThreads
+    .map((thread) => {
+      const lastTurn = thread.turns[thread.turns.length - 1];
+      const firstPrompt = thread.turns[0].prompt;
+      const label = firstPrompt.length > 42 ? `${firstPrompt.slice(0, 42)}…` : firstPrompt;
+      const isActive = thread.conversationId === selectedConversationId;
+      return `
+        <button class="conversation-item ${isActive ? 'active' : ''}" data-conversation-id="${thread.conversationId}">
+          <span class="conv-status-dot status-${lastTurn.status}"></span>${label}
+        </button>
+      `;
+    })
+    .join('');
+}
+
+el.conversationsList.addEventListener('click', (e) => {
+  const btn = e.target.closest('.conversation-item');
+  if (!btn) return;
+  selectConversation(btn.dataset.conversationId);
+});
+
+el.btnNewConversation.addEventListener('click', () => {
+  clearMessage(el.aiRequestMessage);
+  document.getElementById('request-type').value = '';
+  document.getElementById('request-prompt').value = '';
+  showHomeScreen();
+});
+
+function showHomeScreen() {
+  selectedConversationId = null;
+  el.conversationView.classList.add('hidden');
+  el.homeScreen.classList.remove('hidden');
+  renderSidebar();
+}
+
+function selectConversation(conversationId) {
+  selectedConversationId = conversationId;
+  el.homeScreen.classList.add('hidden');
+  el.conversationView.classList.remove('hidden');
+  renderSidebar();
+  renderConversationThread();
+}
+
+function renderConversationThread() {
+  const thread = allThreads.find((t) => t.conversationId === selectedConversationId);
+  if (!thread) return;
+
+  el.conversationThread.innerHTML = thread.turns
+    .map(
+      (r) => `
+      <div class="chat-turn">
+        <div class="chat-prompt">${r.prompt}</div>
+        ${r.response ? `<div class="ai-response">${renderAiResponse(r.response)}</div>` : ''}
+        ${r.status === 'pending' ? '<p class="muted">Génération en cours...</p>' : ''}
+        ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
+      </div>
+    `
+    )
+    .join('');
+
+  const lastTurn = thread.turns[thread.turns.length - 1];
+  el.formReply.classList.toggle('hidden', lastTurn.status !== 'completed');
+}
+
+// ---------------------------------------------------------------------
+// 7. Envoi d'un message à Claude, en streaming (le texte arrive petit à
+//    petit, comme sur Claude.ai), qu'il s'agisse d'une nouvelle
+//    conversation ou d'une réponse dans une conversation existante.
+// ---------------------------------------------------------------------
 async function streamAiMessage({ request_type, prompt, conversation_id, onChunk }) {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) throw new Error('Session expirée, reconnecte-toi.');
@@ -351,8 +418,6 @@ async function streamAiMessage({ request_type, prompt, conversation_id, onChunk 
   });
 
   if (!res.ok) {
-    // Erreur détectée avant le début du streaming (ex: limite de requêtes
-    // atteinte) : le serveur renvoie encore du JSON classique ici.
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || 'Erreur lors de l\'envoi.');
   }
@@ -373,8 +438,7 @@ async function streamAiMessage({ request_type, prompt, conversation_id, onChunk 
 }
 
 // ---------------------------------------------------------------------
-// 7. Envoi d'une nouvelle requête IA (démarre toujours une nouvelle
-//    conversation — aucun conversation_id n'est envoyé).
+// 7bis. Écran d'accueil : démarre toujours une nouvelle conversation.
 // ---------------------------------------------------------------------
 el.formAiRequest.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -386,28 +450,40 @@ el.formAiRequest.addEventListener('submit', async (e) => {
   const request_type = document.getElementById('request-type').value;
   const prompt = document.getElementById('request-prompt').value;
   const submitButton = el.formAiRequest.querySelector('button');
+  const newConversationId = crypto.randomUUID();
 
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
 
-  el.aiRequestMessage.innerHTML = '<div class="ai-response" id="streaming-preview"></div>';
+  // On bascule tout de suite sur la vue conversation, avec le texte qui
+  // s'affiche au fur et à mesure.
+  selectedConversationId = newConversationId;
+  el.homeScreen.classList.add('hidden');
+  el.conversationView.classList.remove('hidden');
+  el.formReply.classList.add('hidden');
+  el.conversationThread.innerHTML = `
+    <div class="chat-turn">
+      <div class="chat-prompt">${prompt}</div>
+      <div class="ai-response" id="streaming-preview"></div>
+    </div>
+  `;
   const previewEl = document.getElementById('streaming-preview');
 
   try {
     await streamAiMessage({
       request_type,
       prompt,
+      conversation_id: newConversationId,
       onChunk: (chunkText) => {
         previewEl.textContent += chunkText;
       },
     });
 
-    clearMessage(el.aiRequestMessage);
-    showMessage(el.aiRequestMessage, 'Réponse générée !', 'success');
     el.formAiRequest.reset();
     const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
     await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
   } catch (err) {
+    showHomeScreen();
     showMessage(el.aiRequestMessage, err.message, 'error');
   } finally {
     submitButton.disabled = false;
@@ -416,44 +492,49 @@ el.formAiRequest.addEventListener('submit', async (e) => {
 });
 
 // ---------------------------------------------------------------------
-// 7bis. Répondre dans une conversation existante. Les formulaires de
-//    réponse sont recréés à chaque rendu de l'historique, donc on utilise
-//    la délégation d'événements (un seul listener sur le conteneur).
+// 7ter. Répondre dans la conversation actuellement ouverte.
 // ---------------------------------------------------------------------
-el.requestsList.addEventListener('submit', async (e) => {
-  const form = e.target.closest('.reply-form');
-  if (!form) return;
+el.formReply.addEventListener('submit', async (e) => {
   e.preventDefault();
+  clearMessage(el.replyMessage);
+  if (!selectedConversationId) return;
 
-  const conversation_id = form.dataset.conversationId;
-  const request_type = form.dataset.requestType;
-  const input = form.querySelector('.reply-input');
-  const prompt = input.value;
-  const submitButton = form.querySelector('button');
+  const thread = allThreads.find((t) => t.conversationId === selectedConversationId);
+  if (!thread) return;
+
+  const request_type = thread.requestType;
+  const prompt = el.replyInput.value;
+  const submitButton = el.formReply.querySelector('button');
 
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
+  el.replyInput.value = '';
+  el.formReply.classList.add('hidden');
 
-  const previewEl = document.createElement('div');
-  previewEl.className = 'ai-response';
-  form.insertAdjacentElement('beforebegin', previewEl);
+  const previewTurn = document.createElement('div');
+  previewTurn.className = 'chat-turn';
+  previewTurn.innerHTML = `<div class="chat-prompt">${prompt}</div><div class="ai-response" id="streaming-preview"></div>`;
+  el.conversationThread.appendChild(previewTurn);
+  const previewEl = previewTurn.querySelector('#streaming-preview');
 
   try {
     await streamAiMessage({
       request_type,
       prompt,
-      conversation_id,
+      conversation_id: selectedConversationId,
       onChunk: (chunkText) => {
         previewEl.textContent += chunkText;
       },
     });
+
     const { data: { session } } = await supabaseClient.auth.getSession();
     await loadRequests({ Authorization: `Bearer ${session.access_token}` });
   } catch (err) {
-    showMessage(el.aiRequestMessage, err.message, 'error');
+    showMessage(el.replyMessage, err.message, 'error');
+    el.formReply.classList.remove('hidden');
+  } finally {
     submitButton.disabled = false;
-    submitButton.textContent = 'Répondre';
-    previewEl.remove();
+    submitButton.textContent = 'Envoyer';
   }
 });
 
