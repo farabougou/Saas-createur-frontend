@@ -334,9 +334,10 @@ async function loadRequests(authHeaders) {
 }
 
 // Envoie un message (nouvelle requête ou réponse dans une conversation) à
-// l'API, factorisé pour être utilisé par le formulaire principal et par
-// chaque formulaire de réponse généré dynamiquement.
-async function submitAiMessage({ request_type, prompt, conversation_id }) {
+// l'API et LIT LA RÉPONSE EN STREAMING : Claude écrit sa réponse petit à
+// petit, et onChunk(text) est appelé à chaque morceau reçu, pour un effet
+// "en train d'écrire" en direct. Retourne le texte complet une fois fini.
+async function streamAiMessage({ request_type, prompt, conversation_id, onChunk }) {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) throw new Error('Session expirée, reconnecte-toi.');
 
@@ -349,11 +350,26 @@ async function submitAiMessage({ request_type, prompt, conversation_id }) {
     body: JSON.stringify({ request_type, prompt, conversation_id }),
   });
 
-  const data = await res.json();
   if (!res.ok) {
+    // Erreur détectée avant le début du streaming (ex: limite de requêtes
+    // atteinte) : le serveur renvoie encore du JSON classique ici.
+    const data = await res.json().catch(() => ({}));
     throw new Error(data.error || 'Erreur lors de l\'envoi.');
   }
-  return data;
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunkText = decoder.decode(value, { stream: true });
+    fullText += chunkText;
+    if (onChunk) onChunk(chunkText);
+  }
+
+  return fullText;
 }
 
 // ---------------------------------------------------------------------
@@ -374,8 +390,19 @@ el.formAiRequest.addEventListener('submit', async (e) => {
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
 
+  el.aiRequestMessage.innerHTML = '<div class="ai-response" id="streaming-preview"></div>';
+  const previewEl = document.getElementById('streaming-preview');
+
   try {
-    await submitAiMessage({ request_type, prompt });
+    await streamAiMessage({
+      request_type,
+      prompt,
+      onChunk: (chunkText) => {
+        previewEl.textContent += chunkText;
+      },
+    });
+
+    clearMessage(el.aiRequestMessage);
     showMessage(el.aiRequestMessage, 'Réponse générée !', 'success');
     el.formAiRequest.reset();
     const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
@@ -407,14 +434,26 @@ el.requestsList.addEventListener('submit', async (e) => {
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
 
+  const previewEl = document.createElement('div');
+  previewEl.className = 'ai-response';
+  form.insertAdjacentElement('beforebegin', previewEl);
+
   try {
-    await submitAiMessage({ request_type, prompt, conversation_id });
+    await streamAiMessage({
+      request_type,
+      prompt,
+      conversation_id,
+      onChunk: (chunkText) => {
+        previewEl.textContent += chunkText;
+      },
+    });
     const { data: { session } } = await supabaseClient.auth.getSession();
     await loadRequests({ Authorization: `Bearer ${session.access_token}` });
   } catch (err) {
     showMessage(el.aiRequestMessage, err.message, 'error');
     submitButton.disabled = false;
     submitButton.textContent = 'Répondre';
+    previewEl.remove();
   }
 });
 
