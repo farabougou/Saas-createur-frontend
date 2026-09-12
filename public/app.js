@@ -21,7 +21,14 @@ const CONTENT_TYPE_LABELS = {
   collab_pitch: 'Message de proposition de collaboration',
   verification_publication: 'Vérification avant publication',
   analyse_video: 'Analyse de vidéo TikTok',
+  generate_from_success: 'Nouveau script inspiré d\'un succès',
 };
+
+// Retient l'id de l'analyse TikTok (tiktok_analyses) associée à chaque
+// conversation d'analyse de vidéo, pour pouvoir afficher les boutons
+// d'action rapide en dessous du rapport. Reste en mémoire pour la session
+// en cours (pas encore persisté après un rechargement de page).
+const analysisIdByConversation = {};
 
 function contentTypeLabel(type) {
   return CONTENT_TYPE_LABELS[type] || type;
@@ -291,6 +298,7 @@ async function loadTikTokProfile(authHeaders) {
                 data-likes="${v.like_count ?? 0}"
                 data-comments="${v.comment_count ?? 0}"
                 data-shares="${v.share_count ?? 0}"
+                data-url="${(v.share_url || '').replace(/"/g, '&quot;')}"
                 title="Analyser cette vidéo"
                 style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:4px;font-size:13px;line-height:1;padding:4px 6px;cursor:pointer;"
               >🔍</button>
@@ -321,9 +329,9 @@ async function loadTikTokProfile(authHeaders) {
     // vidéo précise, avec son titre et ses statistiques déjà remplis.
     document.querySelectorAll('.btn-analyse-video').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const { title, views, likes, comments, shares } = btn.dataset;
+        const { title, views, likes, comments, shares, url } = btn.dataset;
         const prompt = `Analyse cette vidéo TikTok :\n- Titre : "${title}"\n- Vues : ${views}\n- Likes : ${likes}\n- Commentaires : ${comments}\n- Partages : ${shares}`;
-        startAiRequest('analyse_video', prompt);
+        startAiRequest('analyse_video', prompt, { video_url: url, views: Number(views) || 0, likes: Number(likes) || 0 });
       });
     });
   } catch (err) {
@@ -598,25 +606,57 @@ function renderConversationThread() {
 
   const lastTurn = thread.turns[thread.turns.length - 1];
   el.formReply.classList.toggle('hidden', lastTurn.status !== 'completed');
+
+  // Actions rapides sous un rapport d'analyse de vidéo TikTok terminé :
+  // permet de réutiliser ce qui a marché pour générer un nouveau script.
+  const analysisId = analysisIdByConversation[thread.conversationId];
+  if (thread.requestType === 'analyse_video' && analysisId && lastTurn.status === 'completed') {
+    const actionLabels = {
+      episode2: "Générer l'épisode 2",
+      spinoff: 'Créer un spin-off sur le même ton',
+      apply_format: 'Appliquer ce format à une autre histoire',
+    };
+    const ctaHtml = `
+      <div class="chat-turn" style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${Object.entries(actionLabels)
+          .map(([action, label]) => `<button class="secondary btn-generate-from-success" data-action="${action}">${label}</button>`)
+          .join('')}
+      </div>
+    `;
+    el.conversationThread.insertAdjacentHTML('beforeend', ctaHtml);
+    el.conversationThread.querySelectorAll('.btn-generate-from-success').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        generateFromSuccess(analysisId, action, actionLabels[action]);
+      });
+    });
+  }
 }
 
-async function streamAiMessage({ request_type, prompt, conversation_id, onChunk }) {
+// Envoie une requête POST en streaming vers n'importe quelle route du
+// backend qui répond en texte brut morceau par morceau (ai-requests,
+// generate-from-success...), et renvoie le texte complet une fois terminé,
+// ainsi que l'éventuel en-tête X-Analysis-Id (présent seulement pour une
+// analyse de vidéo TikTok fraîchement créée).
+async function streamFromEndpoint(endpoint, body, onChunk) {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) throw new Error('Session expirée, reconnecte-toi.');
 
-  const res = await fetch(`${API_BASE_URL}/api/ai-requests`, {
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ request_type, prompt, conversation_id }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || 'Erreur lors de l\'envoi.');
   }
+
+  const analysisId = res.headers.get('X-Analysis-Id');
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -630,14 +670,19 @@ async function streamAiMessage({ request_type, prompt, conversation_id, onChunk 
     if (onChunk) onChunk(chunkText);
   }
 
-  return fullText;
+  return { fullText, analysisId };
+}
+
+async function streamAiMessage({ request_type, prompt, conversation_id, video_url, views, likes, onChunk }) {
+  return streamFromEndpoint('/api/ai-requests', { request_type, prompt, conversation_id, video_url, views, likes }, onChunk);
 }
 
 // Lance une nouvelle requête IA à partir de n'importe où dans l'interface
 // (formulaire principal, ou bouton "Analyser cette vidéo" sur une vignette
 // TikTok) : ouvre une nouvelle conversation, affiche la réponse au fur et à
 // mesure, puis recharge l'historique. Renvoie true en cas de succès.
-async function startAiRequest(request_type, prompt) {
+// `extra` peut contenir { video_url, views, likes } pour une analyse vidéo.
+async function startAiRequest(request_type, prompt, extra = {}) {
   clearMessage(el.aiRequestMessage);
   const newConversationId = crypto.randomUUID();
 
@@ -654,14 +699,19 @@ async function startAiRequest(request_type, prompt) {
   const previewEl = document.getElementById('streaming-preview');
 
   try {
-    await streamAiMessage({
+    const { analysisId } = await streamAiMessage({
       request_type,
       prompt,
       conversation_id: newConversationId,
+      ...extra,
       onChunk: (chunkText) => {
         previewEl.textContent += chunkText;
       },
     });
+
+    if (analysisId) {
+      analysisIdByConversation[newConversationId] = analysisId;
+    }
 
     const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
     await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
@@ -670,6 +720,42 @@ async function startAiRequest(request_type, prompt) {
     showHomeScreen();
     showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
     return false;
+  }
+}
+
+// Déclenché par un des 3 boutons d'action rapide sous un rapport d'analyse
+// de vidéo TikTok : génère un nouveau script qui réutilise ce qui a fait le
+// succès de la vidéo analysée.
+async function generateFromSuccess(analysisId, action, displayPrompt) {
+  clearMessage(el.aiRequestMessage);
+  const newConversationId = crypto.randomUUID();
+
+  selectedConversationId = newConversationId;
+  el.homeScreen.classList.add('hidden');
+  el.conversationView.classList.remove('hidden');
+  el.formReply.classList.add('hidden');
+  el.conversationThread.innerHTML = `
+    <div class="chat-turn">
+      <div class="chat-prompt">${displayPrompt}</div>
+      <div class="ai-response" id="streaming-preview"></div>
+    </div>
+  `;
+  const previewEl = document.getElementById('streaming-preview');
+
+  try {
+    await streamFromEndpoint(
+      '/api/generate-from-success',
+      { analysis_id: analysisId, action, conversation_id: newConversationId },
+      (chunkText) => {
+        previewEl.textContent += chunkText;
+      }
+    );
+
+    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
+    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
+  } catch (err) {
+    showHomeScreen();
+    showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
   }
 }
 
