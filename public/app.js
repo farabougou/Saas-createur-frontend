@@ -265,9 +265,12 @@ async function loadTikTokProfile(authHeaders) {
     el.tiktokCard.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;">
         <img src="${profile.avatar_url}" alt="Avatar TikTok" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" />
-        <div style="flex:1;">
+                <div style="flex:1;">
           <strong>${profile.display_name || 'Compte TikTok'}</strong>
           <p class="muted" style="margin:0;">✅ Connecté</p>
+          <p class="muted" style="margin:2px 0 0;font-size:12px;">
+            ${(profile.follower_count ?? 0).toLocaleString('fr-FR')} abonnés · ${(profile.likes_count ?? 0).toLocaleString('fr-FR')} likes · ${profile.video_count ?? 0} vidéos
+          </p>
         </div>
         <button class="secondary" id="btn-disconnect-tiktok">Déconnecter</button>
       </div>
