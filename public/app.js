@@ -18,7 +18,7 @@ const CONTENT_TYPE_LABELS = {
   bio_profil: 'Bio de profil',
   reponse_commentaire: 'Réponse à un commentaire',
   story_instagram: 'Plan de story Instagram',
-    collab_pitch: 'Message de proposition de collaboration',
+  collab_pitch: 'Message de proposition de collaboration',
   verification_publication: 'Vérification avant publication',
 };
 
@@ -29,6 +29,22 @@ function contentTypeLabel(type) {
 function renderAiResponse(text) {
   if (!text) return '';
   return window.marked.parse(text);
+}
+
+// Traduit une erreur technique (souvent un problème réseau) en message
+// clair et actionnable pour l'utilisateur, plutôt que d'afficher le
+// message brut du navigateur.
+function friendlyErrorMessage(err) {
+  const msg = err?.message || '';
+  if (
+    msg.includes('Failed to fetch') ||
+    msg.includes('NetworkError') ||
+    msg.includes('Load failed') ||
+    msg.includes('fetch failed')
+  ) {
+    return 'Impossible de contacter le serveur. Vérifie ta connexion internet et réessaie.';
+  }
+  return msg || 'Une erreur est survenue. Réessaie dans quelques instants.';
 }
 
 const el = {
@@ -100,7 +116,7 @@ async function loadPlans() {
       )
       .join('');
   } catch (err) {
-    el.plansGrid.innerHTML = `<p class="muted">Erreur de chargement des offres (${err.message})</p>`;
+    el.plansGrid.innerHTML = `<p class="muted">Erreur de chargement des offres (${friendlyErrorMessage(err)})</p>`;
   }
 }
 
@@ -128,7 +144,7 @@ el.formSignup.addEventListener('submit', async (e) => {
   const { error } = await supabaseClient.auth.signUp({ email, password });
 
   if (error) {
-    showMessage(el.authMessage, error.message, 'error');
+    showMessage(el.authMessage, friendlyErrorMessage(error), 'error');
     return;
   }
 
@@ -147,7 +163,7 @@ el.formLogin.addEventListener('submit', async (e) => {
   const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
   if (error) {
-    showMessage(el.authMessage, error.message, 'error');
+    showMessage(el.authMessage, friendlyErrorMessage(error), 'error');
   }
 });
 
@@ -178,7 +194,7 @@ async function loadDashboard() {
       <p><strong>Utilisation :</strong> ${quotaText}</p>
     `;
   } catch (err) {
-    el.profileCard.innerHTML = `<p class="muted">Erreur : ${err.message}</p>`;
+    el.profileCard.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
   }
 
   await loadCreatorProfile(authHeaders);
@@ -199,7 +215,7 @@ async function loadCreatorProfile(authHeaders) {
       document.getElementById('profile-style-notes').value = profile.style_notes ?? '';
     }
   } catch (err) {
-    showMessage(el.creatorProfileMessage, err.message, 'error');
+    showMessage(el.creatorProfileMessage, friendlyErrorMessage(err), 'error');
   }
 }
 
@@ -234,7 +250,7 @@ el.formCreatorProfile.addEventListener('submit', async (e) => {
 
     showMessage(el.creatorProfileMessage, 'Profil enregistré !', 'success');
   } catch (err) {
-    showMessage(el.creatorProfileMessage, err.message, 'error');
+    showMessage(el.creatorProfileMessage, friendlyErrorMessage(err), 'error');
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = 'Enregistrer mon profil';
@@ -300,7 +316,7 @@ async function loadRequests(authHeaders) {
       }
     }
   } catch (err) {
-    el.conversationsList.innerHTML = `<p class="muted" style="padding:10px 12px;">Erreur : ${err.message}</p>`;
+    el.conversationsList.innerHTML = `<p class="muted" style="padding:10px 12px;">Erreur : ${friendlyErrorMessage(err)}</p>`;
   }
 }
 
@@ -369,7 +385,7 @@ async function renameConversation(conversationId) {
     conversationTitles[conversationId] = newTitle.trim();
     renderSidebar();
   } catch (err) {
-    alert(err.message);
+    alert(friendlyErrorMessage(err));
   }
 }
 
@@ -393,7 +409,7 @@ async function deleteConversation(conversationId) {
     const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
     await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
   } catch (err) {
-    alert(err.message);
+    alert(friendlyErrorMessage(err));
   }
 }
 
@@ -515,7 +531,7 @@ el.formAiRequest.addEventListener('submit', async (e) => {
     await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
   } catch (err) {
     showHomeScreen();
-    showMessage(el.aiRequestMessage, err.message, 'error');
+    showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = 'Envoyer';
@@ -558,7 +574,7 @@ el.formReply.addEventListener('submit', async (e) => {
     const { data: { session } } = await supabaseClient.auth.getSession();
     await loadRequests({ Authorization: `Bearer ${session.access_token}` });
   } catch (err) {
-    showMessage(el.replyMessage, err.message, 'error');
+    showMessage(el.replyMessage, friendlyErrorMessage(err), 'error');
     el.formReply.classList.remove('hidden');
   } finally {
     submitButton.disabled = false;
