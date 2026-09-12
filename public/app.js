@@ -246,7 +246,34 @@ async function loadTikTokProfile(authHeaders) {
   try {
     const res = await fetch(`${API_BASE_URL}/api/tiktok/profile`, { headers: authHeaders });
     if (!res.ok) throw new Error('Impossible de charger le profil TikTok.');
-    const { profile, videos, growth } = await res.json();
+    const { profile, videos, growth, recentGrowth } = await res.json();
+
+    // Bannière "depuis hier" : c'est ce qui donne une raison concrète de
+    // revenir voir l'app régulièrement. La ligne "depuis le tout début" reste
+    // affichée en plus petit, seulement si elle apporte une info différente.
+    let growthHtml;
+    if (!recentGrowth) {
+      growthHtml = `
+        <p class="muted" style="margin:2px 0 0;font-size:11px;">
+          Le suivi de croissance démarre aujourd'hui — reviens demain pour voir l'évolution.
+        </p>
+      `;
+    } else {
+      const recentLine = `Depuis hier : ${recentGrowth.followerDelta >= 0 ? '+' : ''}${recentGrowth.followerDelta} abonnés, ${recentGrowth.likesDelta >= 0 ? '+' : ''}${recentGrowth.likesDelta} likes`;
+      const longTermLine = growth && growth.sinceDate !== recentGrowth.sinceDate
+        ? `
+          <p class="muted" style="margin:2px 0 0;font-size:10px;">
+            Depuis le ${new Date(growth.sinceDate).toLocaleDateString('fr-FR')} : ${growth.followerDelta >= 0 ? '+' : ''}${growth.followerDelta} abonnés, ${growth.likesDelta >= 0 ? '+' : ''}${growth.likesDelta} likes
+          </p>
+        `
+        : '';
+      growthHtml = `
+        <p style="margin:6px 0 0;font-size:12px;background:rgba(99,102,241,0.15);border-radius:6px;padding:4px 8px;display:inline-block;">
+          📈 ${recentLine}
+        </p>
+        ${longTermLine}
+      `;
+    }
 
     const videosHtml = videos && videos.length
       ? `
@@ -282,11 +309,7 @@ async function loadTikTokProfile(authHeaders) {
           <p class="muted" style="margin:2px 0 0;font-size:12px;">
             ${(profile.follower_count ?? 0).toLocaleString('fr-FR')} abonnés · ${(profile.likes_count ?? 0).toLocaleString('fr-FR')} likes · ${profile.video_count ?? 0} vidéos
           </p>
-          <p class="muted" style="margin:2px 0 0;font-size:11px;">
-            ${growth
-              ? `Depuis le ${new Date(growth.sinceDate).toLocaleDateString('fr-FR')} : ${growth.followerDelta >= 0 ? '+' : ''}${growth.followerDelta} abonnés, ${growth.likesDelta >= 0 ? '+' : ''}${growth.likesDelta} likes`
-              : 'Le suivi de croissance démarre aujourd\'hui — reviens demain pour voir l\'évolution.'}
-          </p>
+          ${growthHtml}
         </div>
         <button class="secondary" id="btn-disconnect-tiktok">Déconnecter</button>
       </div>
