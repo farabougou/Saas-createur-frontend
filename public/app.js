@@ -183,7 +183,7 @@ async function loadDashboard() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
     if (!res.ok) throw new Error('Erreur de chargement du profil.');
-        const { profile, videos, growth } = await res.json();
+        const { profile, subscription, usage } = await res.json();
 
     const quotaText = usage.quota != null
       ? `${usage.requestsUsed} / ${usage.quota} requêtes utilisées ce mois`
@@ -245,7 +245,7 @@ async function loadTikTokProfile(authHeaders) {
   try {
     const res = await fetch(`${API_BASE_URL}/api/tiktok/profile`, { headers: authHeaders });
     if (!res.ok) throw new Error('Impossible de charger le profil TikTok.');
-    const { profile, videos } = await res.json();
+    const { profile, videos, growth } = await res.json();
 
     const videosHtml = videos && videos.length
       ? `
