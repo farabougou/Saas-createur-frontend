@@ -8,8 +8,6 @@ const supabaseClient = window.supabase.createClient(
 
 const API_BASE_URL = window.APP_CONFIG.API_BASE_URL;
 
-// Noms lisibles pour chaque type de contenu (doit correspondre aux
-// <option value="..."> du formulaire dans index.html).
 const CONTENT_TYPE_LABELS = {
   legende_instagram: 'Légende Instagram',
   script_tiktok: 'Script vidéo TikTok / Reels',
@@ -27,14 +25,11 @@ function contentTypeLabel(type) {
   return CONTENT_TYPE_LABELS[type] || type;
 }
 
-// Transforme le texte formaté renvoyé par l'IA (titres, gras, listes) en
-// vrai HTML grâce à marked.js, chargé dans index.html.
 function renderAiResponse(text) {
   if (!text) return '';
   return window.marked.parse(text);
 }
 
-// Éléments de la page qu'on va manipuler souvent.
 const el = {
   nav: document.getElementById('nav'),
   viewPublic: document.getElementById('view-public'),
@@ -64,12 +59,10 @@ const el = {
   replyMessage: document.getElementById('reply-message'),
 };
 
-// État : liste des conversations chargées, et laquelle est ouverte.
 let allThreads = [];
 let selectedConversationId = null;
+let conversationTitles = {};
 
-// Formate un prix stocké en "price_cents" (voir schéma Supabase). Le FCFA
-// n'ayant pas de sous-unité, on affiche juste le nombre tel quel.
 function formatPrice(plan) {
   if (plan.price_cents === 0) return 'Gratuit';
   return `${plan.price_cents} ${plan.currency}`;
@@ -83,9 +76,6 @@ function clearMessage(container) {
   container.innerHTML = '';
 }
 
-// ---------------------------------------------------------------------
-// 1. Plans publics — visibles par tout le monde, même déconnecté.
-// ---------------------------------------------------------------------
 async function loadPlans() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/plans`);
@@ -113,9 +103,6 @@ async function loadPlans() {
   }
 }
 
-// ---------------------------------------------------------------------
-// 2. Onglets Connexion / Inscription (juste un affichage conditionnel).
-// ---------------------------------------------------------------------
 el.tabLogin.addEventListener('click', () => {
   el.tabLogin.classList.add('active');
   el.tabSignup.classList.remove('active');
@@ -132,10 +119,6 @@ el.tabSignup.addEventListener('click', () => {
   clearMessage(el.authMessage);
 });
 
-// ---------------------------------------------------------------------
-// 3. Inscription — crée le compte dans auth.users. Le trigger SQL
-//    handle_new_user() créera automatiquement la ligne profiles associée.
-// ---------------------------------------------------------------------
 el.formSignup.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = document.getElementById('signup-email').value;
@@ -155,9 +138,6 @@ el.formSignup.addEventListener('submit', async (e) => {
   );
 });
 
-// ---------------------------------------------------------------------
-// 4. Connexion.
-// ---------------------------------------------------------------------
 el.formLogin.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = document.getElementById('login-email').value;
@@ -170,16 +150,10 @@ el.formLogin.addEventListener('submit', async (e) => {
   }
 });
 
-// ---------------------------------------------------------------------
-// 5. Déconnexion (le bouton est injecté dynamiquement dans le header).
-// ---------------------------------------------------------------------
 async function logout() {
   await supabaseClient.auth.signOut();
 }
 
-// ---------------------------------------------------------------------
-// 6. Espace utilisateur connecté : profil + abonnement + conversations.
-// ---------------------------------------------------------------------
 async function loadDashboard() {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) return;
@@ -191,7 +165,7 @@ async function loadDashboard() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
     if (!res.ok) throw new Error('Erreur de chargement du profil.');
-        const { profile, subscription, usage } = await res.json();
+    const { profile, subscription, usage } = await res.json();
 
     const quotaText = usage.quota != null
       ? `${usage.requestsUsed} / ${usage.quota} requêtes utilisées ce mois`
@@ -211,11 +185,6 @@ async function loadDashboard() {
   await loadRequests(authHeaders);
 }
 
-// ---------------------------------------------------------------------
-// 6bis. Profil créateur : charge les infos existantes dans le formulaire,
-//    et les enregistre quand l'utilisateur soumet. Ce profil est ensuite
-//    injecté automatiquement par le serveur dans chaque génération IA.
-// ---------------------------------------------------------------------
 async function loadCreatorProfile(authHeaders) {
   try {
     const res = await fetch(`${API_BASE_URL}/api/creator-profile`, { headers: authHeaders });
@@ -271,7 +240,6 @@ el.formCreatorProfile.addEventListener('submit', async (e) => {
   }
 });
 
-// Ouvre / ferme la fenêtre Profil & paramètres.
 el.btnOpenProfile.addEventListener('click', () => {
   el.profileModal.classList.remove('hidden');
 });
@@ -282,14 +250,6 @@ el.profileModal.addEventListener('click', (e) => {
   if (e.target === el.profileModal) el.profileModal.classList.add('hidden');
 });
 
-// ---------------------------------------------------------------------
-// 6ter. Barre latérale : liste des conversations + navigation entre
-//    l'écran d'accueil et une conversation ouverte.
-// ---------------------------------------------------------------------
-
-// Regroupe les requêtes plates renvoyées par l'API en conversations
-// (mêmes conversation_id), triées de la plus récemment active à la plus
-// ancienne.
 function groupByConversation(requests) {
   const map = new Map();
   for (const r of requests) {
@@ -314,9 +274,18 @@ function groupByConversation(requests) {
 
 async function loadRequests(authHeaders) {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/ai-requests`, { headers: authHeaders });
-    if (!res.ok) throw new Error('Erreur de chargement de l\'historique.');
-    const requests = await res.json();
+    const [requestsRes, titlesRes] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/ai-requests`, { headers: authHeaders }),
+      fetch(`${API_BASE_URL}/api/conversations`, { headers: authHeaders }),
+    ]);
+    if (!requestsRes.ok) throw new Error('Erreur de chargement de l\'historique.');
+    const requests = await requestsRes.json();
+    const titles = titlesRes.ok ? await titlesRes.json() : [];
+
+    conversationTitles = {};
+    for (const t of titles) {
+      conversationTitles[t.conversation_id] = t.title;
+    }
 
     allThreads = groupByConversation(requests);
     renderSidebar();
@@ -344,22 +313,88 @@ function renderSidebar() {
     .map((thread) => {
       const lastTurn = thread.turns[thread.turns.length - 1];
       const firstPrompt = thread.turns[0].prompt;
-      const label = firstPrompt.length > 42 ? `${firstPrompt.slice(0, 42)}…` : firstPrompt;
+      const defaultLabel = firstPrompt.length > 42 ? `${firstPrompt.slice(0, 42)}…` : firstPrompt;
+      const label = conversationTitles[thread.conversationId] || defaultLabel;
       const isActive = thread.conversationId === selectedConversationId;
       return `
-        <button class="conversation-item ${isActive ? 'active' : ''}" data-conversation-id="${thread.conversationId}">
-          <span class="conv-status-dot status-${lastTurn.status}"></span>${label}
-        </button>
+        <div class="conversation-item ${isActive ? 'active' : ''}" data-conversation-id="${thread.conversationId}">
+          <span class="conversation-label"><span class="conv-status-dot status-${lastTurn.status}"></span>${label}</span>
+          <span class="conversation-actions">
+            <button class="icon-btn btn-rename-conversation" title="Renommer">✏️</button>
+            <button class="icon-btn btn-delete-conversation" title="Supprimer">🗑</button>
+          </span>
+        </div>
       `;
     })
     .join('');
 }
 
 el.conversationsList.addEventListener('click', (e) => {
-  const btn = e.target.closest('.conversation-item');
-  if (!btn) return;
-  selectConversation(btn.dataset.conversationId);
+  const item = e.target.closest('.conversation-item');
+  if (!item) return;
+  const conversationId = item.dataset.conversationId;
+
+  if (e.target.closest('.btn-rename-conversation')) {
+    e.stopPropagation();
+    renameConversation(conversationId);
+    return;
+  }
+  if (e.target.closest('.btn-delete-conversation')) {
+    e.stopPropagation();
+    deleteConversation(conversationId);
+    return;
+  }
+  selectConversation(conversationId);
 });
+
+async function renameConversation(conversationId) {
+  const currentTitle = conversationTitles[conversationId] || '';
+  const newTitle = window.prompt('Nouveau nom de la conversation :', currentTitle);
+  if (newTitle === null || !newTitle.trim()) return;
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ title: newTitle.trim() }),
+    });
+    if (!res.ok) throw new Error('Erreur lors du renommage.');
+    conversationTitles[conversationId] = newTitle.trim();
+    renderSidebar();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function deleteConversation(conversationId) {
+  const confirmed = window.confirm('Supprimer définitivement cette conversation ?');
+  if (!confirmed) return;
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (!res.ok && res.status !== 204) throw new Error('Erreur lors de la suppression.');
+
+    if (selectedConversationId === conversationId) {
+      showHomeScreen();
+    }
+    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
+    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
+  } catch (err) {
+    alert(err.message);
+  }
+}
 
 el.btnNewConversation.addEventListener('click', () => {
   clearMessage(el.aiRequestMessage);
@@ -404,11 +439,6 @@ function renderConversationThread() {
   el.formReply.classList.toggle('hidden', lastTurn.status !== 'completed');
 }
 
-// ---------------------------------------------------------------------
-// 7. Envoi d'un message à Claude, en streaming (le texte arrive petit à
-//    petit, comme sur Claude.ai), qu'il s'agisse d'une nouvelle
-//    conversation ou d'une réponse dans une conversation existante.
-// ---------------------------------------------------------------------
 async function streamAiMessage({ request_type, prompt, conversation_id, onChunk }) {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) throw new Error('Session expirée, reconnecte-toi.');
@@ -442,9 +472,6 @@ async function streamAiMessage({ request_type, prompt, conversation_id, onChunk 
   return fullText;
 }
 
-// ---------------------------------------------------------------------
-// 7bis. Écran d'accueil : démarre toujours une nouvelle conversation.
-// ---------------------------------------------------------------------
 el.formAiRequest.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearMessage(el.aiRequestMessage);
@@ -460,8 +487,6 @@ el.formAiRequest.addEventListener('submit', async (e) => {
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
 
-  // On bascule tout de suite sur la vue conversation, avec le texte qui
-  // s'affiche au fur et à mesure.
   selectedConversationId = newConversationId;
   el.homeScreen.classList.add('hidden');
   el.conversationView.classList.remove('hidden');
@@ -496,9 +521,6 @@ el.formAiRequest.addEventListener('submit', async (e) => {
   }
 });
 
-// ---------------------------------------------------------------------
-// 7ter. Répondre dans la conversation actuellement ouverte.
-// ---------------------------------------------------------------------
 el.formReply.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearMessage(el.replyMessage);
@@ -543,10 +565,6 @@ el.formReply.addEventListener('submit', async (e) => {
   }
 });
 
-// ---------------------------------------------------------------------
-// 8. Bascule entre vue publique et tableau de bord selon l'état de
-//    connexion.
-// ---------------------------------------------------------------------
 supabaseClient.auth.onAuthStateChange((_event, session) => {
   if (session) {
     el.viewPublic.classList.add('hidden');
@@ -564,5 +582,4 @@ supabaseClient.auth.onAuthStateChange((_event, session) => {
   }
 });
 
-// Chargement initial des offres publiques (indépendant de la connexion).
 loadPlans();
