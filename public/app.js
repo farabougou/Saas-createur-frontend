@@ -211,8 +211,10 @@ async function loadDashboard() {
   await loadCreatorProfile(authHeaders);
   await loadTikTokStatus(authHeaders);
   ensureStoryboardUI();
+  ensureSponsorshipUI();
   showHomeScreen();
   await loadRequests(authHeaders);
+  await loadSponsorships();
 }
 
 // --------------------- Storyboard automatique ---------------------
@@ -1001,6 +1003,309 @@ if (tiktokParam === 'success') {
 } else if (tiktokParam === 'error') {
   alert('La connexion TikTok a échoué. Réessaie.');
   window.history.replaceState({}, '', window.location.pathname);
+}
+
+// --------------------- Sponsoring (mini-CRM) ---------------------
+// Suivi des prospects de marque sous forme de Kanban (À contacter / En
+// négociation / Signé), avec génération d'un email de démarchage basé sur
+// les vraies statistiques d'une vidéo performante rattachée à la carte.
+
+let allSponsorships = [];
+let availableAnalysesForLinking = [];
+
+const SPONSOR_STATUS_LABELS = {
+  a_contacter: 'À contacter',
+  en_negociation: 'En négociation',
+  signe: 'Signé',
+};
+const SPONSOR_STATUS_ORDER = ['a_contacter', 'en_negociation', 'signe'];
+
+async function authHeadersOrNull() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return null;
+  return { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
+}
+
+function ensureSponsorshipUI() {
+  if (document.getElementById('sponsorship-section')) return; // déjà injecté
+
+  const section = document.createElement('div');
+  section.id = 'sponsorship-section';
+  section.className = 'card';
+  section.style.marginTop = '20px';
+  section.innerHTML = `
+    <h3 style="margin-top:0;">🤝 Sponsoring (mini-CRM)</h3>
+    <p class="muted" style="margin-top:0;">
+      Suis tes prospects de marque et génère un email de démarchage basé sur les vraies statistiques
+      d'une de tes vidéos performantes.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">
+      <input id="sponsor-brand-name" placeholder="Nom de la marque" style="flex:1;min-width:140px;" />
+      <input id="sponsor-contact-email" placeholder="Email de contact (optionnel)" style="flex:1;min-width:140px;" />
+      <button id="btn-add-sponsor">+ Ajouter</button>
+    </div>
+    <div id="sponsor-message"></div>
+    <div id="sponsor-kanban" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px;"></div>
+  `;
+
+  el.homeScreen.appendChild(section);
+  document.getElementById('btn-add-sponsor').addEventListener('click', addSponsorship);
+  ensureSponsorPitchModal();
+}
+
+function ensureSponsorPitchModal() {
+  if (document.getElementById('sponsor-pitch-modal')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'sponsor-pitch-modal';
+  modal.style.cssText =
+    'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = `
+    <div style="background:#1a1a2e;border-radius:12px;padding:20px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;">
+      <h3 style="margin-top:0;">✉️ Pitch de sponsoring généré</h3>
+      <div id="sponsor-pitch-text" style="white-space:pre-wrap;font-size:14px;line-height:1.5;background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="secondary" id="btn-close-pitch-modal">Fermer</button>
+        <button id="btn-copy-pitch">📋 Copier l'email</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  document.getElementById('btn-close-pitch-modal').addEventListener('click', () => {
+    modal.style.display = 'none';
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.style.display = 'none';
+  });
+  document.getElementById('btn-copy-pitch').addEventListener('click', () => {
+    const text = document.getElementById('sponsor-pitch-text').textContent;
+    navigator.clipboard.writeText(text);
+    const copyBtn = document.getElementById('btn-copy-pitch');
+    const original = copyBtn.textContent;
+    copyBtn.textContent = '✅ Copié !';
+    setTimeout(() => { copyBtn.textContent = original; }, 1500);
+  });
+}
+
+function showSponsorPitchModal(pitchText) {
+  ensureSponsorPitchModal();
+  document.getElementById('sponsor-pitch-text').textContent = pitchText;
+  document.getElementById('sponsor-pitch-modal').style.display = 'flex';
+}
+
+async function loadSponsorships() {
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const [sponsorsRes, analysesRes] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/sponsorships`, { headers }),
+      fetch(`${API_BASE_URL}/api/tiktok/analyses`, { headers }),
+    ]);
+    if (!sponsorsRes.ok) throw new Error('Erreur de chargement des prospects.');
+
+    allSponsorships = await sponsorsRes.json();
+    availableAnalysesForLinking = analysesRes.ok ? await analysesRes.json() : [];
+    renderSponsorKanban();
+  } catch (err) {
+    const kanbanEl = document.getElementById('sponsor-kanban');
+    if (kanbanEl) kanbanEl.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
+  }
+}
+
+function renderSponsorKanban() {
+  const kanbanEl = document.getElementById('sponsor-kanban');
+  if (!kanbanEl) return;
+
+  kanbanEl.innerHTML = SPONSOR_STATUS_ORDER
+    .map((statusKey) => {
+      const cards = allSponsorships.filter((s) => s.status === statusKey);
+      return `
+        <div>
+          <h4 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;">
+            ${SPONSOR_STATUS_LABELS[statusKey]} <span class="muted">(${cards.length})</span>
+          </h4>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${cards.map((s) => renderSponsorCard(s, statusKey)).join('') || '<p class="muted" style="font-size:12px;">Aucune marque ici.</p>'}
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  attachSponsorCardListeners();
+}
+
+function renderSponsorCard(s, statusKey) {
+  const video = s.linked_video;
+  const videoBadge = video
+    ? `<p class="muted" style="font-size:11px;margin:4px 0;">🎥 ${(video.views ?? 0).toLocaleString('fr-FR')} vues · ${video.engagement_rate != null ? video.engagement_rate + '% engagement' : 'engagement inconnu'}</p>`
+    : `<p class="muted" style="font-size:11px;margin:4px 0;">Aucune vidéo rattachée</p>`;
+
+  const currentIndex = SPONSOR_STATUS_ORDER.indexOf(statusKey);
+  const canMovePrev = currentIndex > 0;
+  const canMoveNext = currentIndex < SPONSOR_STATUS_ORDER.length - 1;
+
+  const videoOptions = availableAnalysesForLinking
+    .map(
+      (a) =>
+        `<option value="${a.id}" ${s.linked_video_id === a.id ? 'selected' : ''}>Vidéo ${a.id.slice(0, 8)}… (${a.views ?? 0} vues)</option>`
+    )
+    .join('');
+
+  return `
+    <div class="card" style="background:rgba(255,255,255,0.03);padding:10px;font-size:13px;" data-id="${s.id}">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">
+        <strong>${escapeHtml(s.brand_name)}</strong>
+        <button class="icon-btn btn-delete-sponsor" title="Supprimer" data-id="${s.id}">🗑</button>
+      </div>
+      <p class="muted" style="font-size:11px;margin:4px 0;">${s.contact_email ? escapeHtml(s.contact_email) : 'Pas d\'email renseigné'}</p>
+      ${videoBadge}
+      <select class="sponsor-video-select" data-id="${s.id}" style="width:100%;font-size:11px;margin:4px 0;">
+        <option value="">Rattacher une vidéo performante...</option>
+        ${videoOptions}
+      </select>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center;">
+        ${canMovePrev ? `<button class="secondary btn-move-sponsor" data-id="${s.id}" data-direction="prev" style="font-size:11px;">←</button>` : ''}
+        ${canMoveNext ? `<button class="secondary btn-move-sponsor" data-id="${s.id}" data-direction="next" style="font-size:11px;">→</button>` : ''}
+        <button class="btn-generate-pitch" data-id="${s.id}" style="font-size:11px;margin-left:auto;">✉️ Générer mon Pitch</button>
+      </div>
+    </div>
+  `;
+}
+
+function attachSponsorCardListeners() {
+  const kanbanEl = document.getElementById('sponsor-kanban');
+  if (!kanbanEl) return;
+
+  kanbanEl.querySelectorAll('.btn-delete-sponsor').forEach((btn) => {
+    btn.addEventListener('click', () => deleteSponsorship(btn.dataset.id));
+  });
+  kanbanEl.querySelectorAll('.btn-move-sponsor').forEach((btn) => {
+    btn.addEventListener('click', () => moveSponsorship(btn.dataset.id, btn.dataset.direction));
+  });
+  kanbanEl.querySelectorAll('.sponsor-video-select').forEach((select) => {
+    select.addEventListener('change', () => linkVideoToSponsorship(select.dataset.id, select.value));
+  });
+  kanbanEl.querySelectorAll('.btn-generate-pitch').forEach((btn) => {
+    btn.addEventListener('click', () => generateSponsorPitch(btn.dataset.id, btn));
+  });
+}
+
+async function addSponsorship() {
+  const brandInput = document.getElementById('sponsor-brand-name');
+  const emailInput = document.getElementById('sponsor-contact-email');
+  const messageEl = document.getElementById('sponsor-message');
+  clearMessage(messageEl);
+
+  const brand_name = brandInput.value.trim();
+  if (!brand_name) {
+    showMessage(messageEl, 'Le nom de la marque est requis.', 'error');
+    return;
+  }
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/sponsorships`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ brand_name, contact_email: emailInput.value.trim() || null }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'ajout.');
+
+    brandInput.value = '';
+    emailInput.value = '';
+    await loadSponsorships();
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+  }
+}
+
+async function deleteSponsorship(id) {
+  const confirmed = window.confirm('Supprimer ce prospect ?');
+  if (!confirmed) return;
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/sponsorships/${id}`, { method: 'DELETE', headers });
+    if (!res.ok && res.status !== 204) throw new Error('Erreur lors de la suppression.');
+    await loadSponsorships();
+  } catch (err) {
+    alert(friendlyErrorMessage(err));
+  }
+}
+
+async function moveSponsorship(id, direction) {
+  const sponsor = allSponsorships.find((s) => s.id === id);
+  if (!sponsor) return;
+
+  const currentIndex = SPONSOR_STATUS_ORDER.indexOf(sponsor.status);
+  const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+  if (newIndex < 0 || newIndex >= SPONSOR_STATUS_ORDER.length) return;
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/sponsorships/${id}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ status: SPONSOR_STATUS_ORDER[newIndex] }),
+    });
+    if (!res.ok) throw new Error('Erreur lors du changement de statut.');
+    await loadSponsorships();
+  } catch (err) {
+    alert(friendlyErrorMessage(err));
+  }
+}
+
+async function linkVideoToSponsorship(id, videoId) {
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/sponsorships/${id}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ linked_video_id: videoId || null }),
+    });
+    if (!res.ok) throw new Error('Erreur lors du rattachement de la vidéo.');
+    await loadSponsorships();
+  } catch (err) {
+    alert(friendlyErrorMessage(err));
+  }
+}
+
+async function generateSponsorPitch(id, btn) {
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Génération...';
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/generate-sponsor-pitch`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ sponsorship_id: id }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de la génération du pitch.');
+
+    showSponsorPitchModal(data.pitch);
+  } catch (err) {
+    alert(friendlyErrorMessage(err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 }
 
 loadPlans();
