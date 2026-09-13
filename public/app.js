@@ -26,8 +26,10 @@ const CONTENT_TYPE_LABELS = {
 
 // Retient l'id de l'analyse TikTok (tiktok_analyses) associée à chaque
 // conversation d'analyse de vidéo, pour pouvoir afficher les boutons
-// d'action rapide en dessous du rapport. Reste en mémoire pour la session
-// en cours (pas encore persisté après un rechargement de page).
+// d'action rapide en dessous du rapport. Rempli à la fois immédiatement
+// après une nouvelle analyse (via l'en-tête X-Analysis-Id) et à chaque
+// chargement de l'historique (via /api/tiktok/analyses), pour que les
+// boutons réapparaissent même après un rechargement de page.
 const analysisIdByConversation = {};
 
 function contentTypeLabel(type) {
@@ -208,8 +210,151 @@ async function loadDashboard() {
 
   await loadCreatorProfile(authHeaders);
   await loadTikTokStatus(authHeaders);
+  ensureStoryboardUI();
   showHomeScreen();
   await loadRequests(authHeaders);
+}
+
+// --------------------- Storyboard automatique ---------------------
+// Découpe un script narratif complet en plans de ~10 secondes, chacun avec
+// sa narration et un prompt visuel prêt à coller dans un générateur vidéo
+// IA (Runway, Kling, Luma...), en respectant une "Bible" de cohérence
+// (personnages, vêtements, décor) définie par l'utilisateur.
+
+let lastStoryboardScenes = [];
+
+function ensureStoryboardUI() {
+  if (document.getElementById('storyboard-section')) return; // déjà injecté
+
+  const section = document.createElement('div');
+  section.id = 'storyboard-section';
+  section.className = 'card';
+  section.style.marginTop = '20px';
+  section.innerHTML = `
+    <h3 style="margin-top:0;">🎬 Storyboard automatique</h3>
+    <p class="muted" style="margin-top:0;">
+      Colle ton script complet, décris tes personnages et ton décor dans la Bible, et l'IA découpe tout en plans
+      de ~10 secondes avec un prompt visuel prêt pour un générateur vidéo IA.
+    </p>
+    <label style="display:block;margin-top:10px;font-size:13px;">
+      Bible (personnages, vêtements, décor à garder identiques sur tous les plans)
+    </label>
+    <textarea
+      id="storyboard-bible"
+      rows="3"
+      placeholder="Ex : Aïcha, 28 ans, tresses noires, boubou jaune. Dans un salon africain chaleureux, tissus wax aux murs, lumière d'après-midi."
+      style="width:100%;margin-top:4px;"
+    ></textarea>
+    <label style="display:block;margin-top:10px;font-size:13px;">Script complet</label>
+    <textarea
+      id="storyboard-script"
+      rows="6"
+      placeholder="Colle ici le texte complet de ta narration..."
+      style="width:100%;margin-top:4px;"
+    ></textarea>
+    <button id="btn-generate-storyboard" style="margin-top:10px;">Générer le storyboard</button>
+    <div id="storyboard-message"></div>
+    <div id="storyboard-results" style="margin-top:16px;display:grid;gap:12px;"></div>
+  `;
+
+  el.homeScreen.appendChild(section);
+  document.getElementById('btn-generate-storyboard').addEventListener('click', generateStoryboard);
+}
+
+async function generateStoryboard() {
+  const bible = document.getElementById('storyboard-bible').value;
+  const script = document.getElementById('storyboard-script').value;
+  const messageEl = document.getElementById('storyboard-message');
+  const resultsEl = document.getElementById('storyboard-results');
+  const btn = document.getElementById('btn-generate-storyboard');
+
+  clearMessage(messageEl);
+  resultsEl.innerHTML = '';
+
+  if (!script.trim()) {
+    showMessage(messageEl, 'Le script est requis.', 'error');
+    return;
+  }
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Découpage en cours...';
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/storyboard`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ script, bible }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de la génération du storyboard.');
+
+    lastStoryboardScenes = data.scenes || [];
+    renderStoryboard(lastStoryboardScenes);
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Générer le storyboard';
+  }
+}
+
+function escapeHtml(text) {
+  return (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderStoryboard(scenes) {
+  const resultsEl = document.getElementById('storyboard-results');
+
+  if (!scenes.length) {
+    resultsEl.innerHTML = '<p class="muted">Aucune scène générée.</p>';
+    return;
+  }
+
+  resultsEl.innerHTML = scenes
+    .map(
+      (s, i) => `
+      <div class="card" style="background:rgba(255,255,255,0.03);">
+        <strong>Plan ${s.scene_number ?? i + 1}</strong>
+        <span class="muted" style="font-size:12px;"> · ~${s.duration_seconds ?? 10}s</span>
+
+        <p style="margin:8px 0 4px;font-size:13px;"><strong>Narration (voix off) :</strong></p>
+        <p style="margin:0 0 8px;white-space:pre-wrap;">${escapeHtml(s.narration)}</p>
+        <button class="secondary btn-copy-narration" data-index="${i}" style="font-size:12px;">📋 Copier la narration</button>
+
+        <p style="margin:12px 0 4px;font-size:13px;"><strong>Prompt visuel (pour le générateur vidéo) :</strong></p>
+        <p style="margin:0 0 8px;white-space:pre-wrap;font-family:monospace;font-size:12px;background:rgba(0,0,0,0.2);padding:8px;border-radius:6px;">${escapeHtml(s.visual_prompt)}</p>
+        <button class="secondary btn-copy-prompt" data-index="${i}" style="font-size:12px;">📋 Copier le prompt visuel</button>
+      </div>
+    `
+    )
+    .join('');
+
+  resultsEl.querySelectorAll('.btn-copy-narration').forEach((copyBtn) => {
+    copyBtn.addEventListener('click', () => {
+      const scene = scenes[Number(copyBtn.dataset.index)];
+      navigator.clipboard.writeText(scene?.narration || '');
+      const original = copyBtn.textContent;
+      copyBtn.textContent = '✅ Copié !';
+      setTimeout(() => { copyBtn.textContent = original; }, 1500);
+    });
+  });
+
+  resultsEl.querySelectorAll('.btn-copy-prompt').forEach((copyBtn) => {
+    copyBtn.addEventListener('click', () => {
+      const scene = scenes[Number(copyBtn.dataset.index)];
+      navigator.clipboard.writeText(scene?.visual_prompt || '');
+      const original = copyBtn.textContent;
+      copyBtn.textContent = '✅ Copié !';
+      setTimeout(() => { copyBtn.textContent = original; }, 1500);
+    });
+  });
 }
 
 async function loadCreatorProfile(authHeaders) {
@@ -443,17 +588,26 @@ function groupByConversation(requests) {
 
 async function loadRequests(authHeaders) {
   try {
-    const [requestsRes, titlesRes] = await Promise.all([
+    const [requestsRes, titlesRes, analysesRes] = await Promise.all([
       fetch(`${API_BASE_URL}/api/ai-requests`, { headers: authHeaders }),
       fetch(`${API_BASE_URL}/api/conversations`, { headers: authHeaders }),
+      fetch(`${API_BASE_URL}/api/tiktok/analyses`, { headers: authHeaders }),
     ]);
     if (!requestsRes.ok) throw new Error('Erreur de chargement de l\'historique.');
     const requests = await requestsRes.json();
     const titles = titlesRes.ok ? await titlesRes.json() : [];
+    const analyses = analysesRes.ok ? await analysesRes.json() : [];
 
     conversationTitles = {};
     for (const t of titles) {
       conversationTitles[t.conversation_id] = t.title;
+    }
+
+    // Réassocie chaque conversation d'analyse de vidéo à son id d'analyse,
+    // pour que les boutons d'action rapide réapparaissent même après un
+    // rechargement de page (pas seulement juste après une analyse fraîche).
+    for (const a of analyses) {
+      analysisIdByConversation[a.conversation_id] = a.id;
     }
 
     allThreads = groupByConversation(requests);
