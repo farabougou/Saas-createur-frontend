@@ -305,41 +305,14 @@ async function generateStoryboard() {
 // storyboard_scenes). Nécessite que la scène ait été enregistrée (elle a
 // un `id`) : si l'enregistrement a échoué côté serveur, on l'indique au
 // lieu d'afficher un bouton qui ne pourrait pas fonctionner.
+// La génération vidéo (Luma) est temporairement désactivée côté produit :
+// tant qu'aucun moyen de paiement n'est ajouté sur le compte Luma, on
+// préfère afficher un message honnête plutôt qu'un bouton qui échouerait.
+// Pour réactiver plus tard : redemande-moi le code complet de cette
+// fonction, je te le redonnerai.
 function sceneVideoBlockHtml(s) {
-  if (!s.id) {
-    return `<p class="muted" style="font-size:11px;margin-top:8px;">Génération vidéo indisponible pour cette scène (non enregistrée).</p>`;
-  }
-
-  const status = s.video_status || 'none';
-
-  if (status === 'completed' && s.video_url) {
-    return `
-      <video src="${s.video_url}" controls style="width:100%;max-width:220px;border-radius:8px;margin-top:8px;display:block;"></video>
-    `;
-  }
-  if (status === 'processing' || status === 'pending') {
-    return `
-      <div class="scene-video-block" data-scene-id="${s.id}" style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px;" class="muted">
-        <span class="spinner" aria-hidden="true"></span> Génération vidéo en cours (Luma peut prendre quelques minutes)...
-      </div>
-    `;
-  }
-  if (status === 'failed') {
-    return `
-      <div class="scene-video-block" data-scene-id="${s.id}" style="margin-top:8px;">
-        <p class="message error" style="margin:0 0 6px;">${escapeHtml(s.video_error || 'La génération vidéo a échoué.')} (crédits remboursés)</p>
-        <button class="secondary btn-generate-scene-video" data-scene-id="${s.id}" style="font-size:12px;">🎬 Réessayer (20 crédits)</button>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="scene-video-block" data-scene-id="${s.id}" style="margin-top:8px;">
-      <button class="secondary btn-generate-scene-video" data-scene-id="${s.id}" style="font-size:12px;">🎬 Générer la vidéo (20 crédits)</button>
-    </div>
-  `;
+  return `<p class="muted" style="font-size:11px;margin-top:8px;">🎬 Génération vidéo : bientôt disponible.</p>`;
 }
-
 function renderStoryboard(scenes) {
   const resultsEl = document.getElementById('storyboard-results');
 
