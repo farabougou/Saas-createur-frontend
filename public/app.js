@@ -212,9 +212,12 @@ async function loadDashboard() {
   await loadTikTokStatus(authHeaders);
   ensureStoryboardUI();
   ensureSponsorshipUI();
+  ensurePersonaSectionUI();
+  ensurePersonaDropdownUI();
   showHomeScreen();
   await loadRequests(authHeaders);
   await loadSponsorships();
+  await loadPersonas();
 }
 
 // --------------------- Storyboard automatique ---------------------
@@ -829,8 +832,8 @@ async function streamFromEndpoint(endpoint, body, onChunk) {
   return { fullText, analysisId };
 }
 
-async function streamAiMessage({ request_type, prompt, conversation_id, video_url, views, likes, onChunk }) {
-  return streamFromEndpoint('/api/ai-requests', { request_type, prompt, conversation_id, video_url, views, likes }, onChunk);
+async function streamAiMessage({ request_type, prompt, conversation_id, video_url, views, likes, persona_id, onChunk }) {
+  return streamFromEndpoint('/api/ai-requests', { request_type, prompt, conversation_id, video_url, views, likes, persona_id }, onChunk);
 }
 
 // Lance une nouvelle requête IA à partir de n'importe où dans l'interface
@@ -920,12 +923,14 @@ el.formAiRequest.addEventListener('submit', async (e) => {
 
   const request_type = document.getElementById('request-type').value;
   const prompt = document.getElementById('request-prompt').value;
+  const personaSelect = document.getElementById('persona-select');
+  const persona_id = personaSelect && personaSelect.value ? personaSelect.value : undefined;
   const submitButton = el.formAiRequest.querySelector('button');
 
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
 
-  const success = await startAiRequest(request_type, prompt);
+  const success = await startAiRequest(request_type, prompt, persona_id ? { persona_id } : {});
   if (success) {
     el.formAiRequest.reset();
   }
@@ -1305,6 +1310,223 @@ async function generateSponsorPitch(id, btn) {
   } finally {
     btn.disabled = false;
     btn.textContent = originalText;
+  }
+}
+
+// --------------------- Personas (Moteur de personnalités) ---------------------
+// Voix/personnages réutilisables (ton, vocabulaire, mots interdits,
+// instructions) qu'on peut choisir dans un menu déroulant avant de générer
+// du contenu, pour que l'IA écrive avec une voix précise plutôt que
+// générique. Peuvent être créés à la main, ou extraits automatiquement à
+// partir d'un script déjà écrit dans le style à reproduire.
+
+let allPersonas = [];
+
+function ensurePersonaSectionUI() {
+  if (document.getElementById('persona-section')) return; // déjà injecté
+
+  const section = document.createElement('div');
+  section.id = 'persona-section';
+  section.className = 'card';
+  section.style.marginTop = '20px';
+  section.innerHTML = `
+    <h3 style="margin-top:0;">🎭 Mes Voix &amp; Personnages</h3>
+    <p class="muted" style="margin-top:0;">
+      Crée des personas (ton, vocabulaire, mots interdits) pour que l'IA écrive avec une voix précise et cohérente
+      au lieu d'une voix générique. Choisis-en un dans le menu déroulant, au-dessus du bouton "Envoyer", avant de générer du contenu.
+    </p>
+
+    <details style="margin:10px 0;">
+      <summary style="cursor:pointer;font-size:13px;">🧬 Extraire un persona à partir d'un script existant</summary>
+      <div style="margin-top:8px;">
+        <textarea id="persona-extract-script" rows="5" placeholder="Colle ici un script ou une transcription déjà écrite dans le style à reproduire..." style="width:100%;"></textarea>
+        <button id="btn-extract-persona" style="margin-top:6px;">Analyser le style</button>
+      </div>
+    </details>
+
+    <div id="persona-message"></div>
+
+    <div style="display:grid;gap:8px;margin:12px 0;">
+      <input id="persona-name" placeholder="Nom (ex : Le Conteur Historique)" />
+      <input id="persona-tone" placeholder="Ton de voix (ex : cynique, phrases courtes, ironique)" />
+      <input id="persona-vocabulary" placeholder="Vocabulaire / expressions récurrentes (optionnel)" />
+      <input id="persona-forbidden" placeholder="Mots interdits, clichés à éviter (optionnel)" />
+      <textarea id="persona-instructions" rows="2" placeholder="Instructions spécifiques supplémentaires (optionnel)"></textarea>
+      <button id="btn-save-persona">💾 Enregistrer ce persona</button>
+    </div>
+
+    <div id="persona-list" style="display:grid;gap:8px;"></div>
+  `;
+
+  el.homeScreen.appendChild(section);
+  document.getElementById('btn-extract-persona').addEventListener('click', extractPersonaFromScript);
+  document.getElementById('btn-save-persona').addEventListener('click', savePersona);
+}
+
+function ensurePersonaDropdownUI() {
+  if (document.getElementById('persona-select')) return; // déjà injecté
+
+  const submitButton = el.formAiRequest.querySelector('button');
+  if (!submitButton) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.style.margin = '10px 0';
+  wrapper.innerHTML = `
+    <label style="display:block;font-size:13px;margin-bottom:4px;">Voix / Personnage à utiliser</label>
+    <select id="persona-select" style="width:100%;">
+      <option value="">Standard (par défaut)</option>
+    </select>
+  `;
+  submitButton.parentNode.insertBefore(wrapper, submitButton);
+}
+
+async function loadPersonas() {
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/personas`, { headers });
+    if (!res.ok) throw new Error('Erreur de chargement des personas.');
+    allPersonas = await res.json();
+    renderPersonaList();
+    renderPersonaDropdownOptions();
+  } catch (err) {
+    const listEl = document.getElementById('persona-list');
+    if (listEl) listEl.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
+  }
+}
+
+function renderPersonaList() {
+  const listEl = document.getElementById('persona-list');
+  if (!listEl) return;
+
+  if (!allPersonas.length) {
+    listEl.innerHTML = '<p class="muted" style="font-size:12px;">Aucun persona enregistré pour l\'instant.</p>';
+    return;
+  }
+
+  listEl.innerHTML = allPersonas
+    .map(
+      (p) => `
+      <div class="card" style="background:rgba(255,255,255,0.03);padding:10px;font-size:13px;">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">
+          <strong>${escapeHtml(p.name)}</strong>
+          <button class="icon-btn btn-delete-persona" title="Supprimer" data-id="${p.id}">🗑</button>
+        </div>
+        ${p.tone_of_voice ? `<p class="muted" style="font-size:12px;margin:4px 0;">${escapeHtml(p.tone_of_voice)}</p>` : ''}
+      </div>
+    `
+    )
+    .join('');
+
+  listEl.querySelectorAll('.btn-delete-persona').forEach((btn) => {
+    btn.addEventListener('click', () => deletePersona(btn.dataset.id));
+  });
+}
+
+function renderPersonaDropdownOptions() {
+  const select = document.getElementById('persona-select');
+  if (!select) return;
+  const currentValue = select.value;
+  select.innerHTML =
+    '<option value="">Standard (par défaut)</option>' +
+    allPersonas.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  select.value = currentValue || '';
+}
+
+async function savePersona() {
+  const messageEl = document.getElementById('persona-message');
+  clearMessage(messageEl);
+
+  const name = document.getElementById('persona-name').value.trim();
+  const tone_of_voice = document.getElementById('persona-tone').value.trim();
+  const vocabulary = document.getElementById('persona-vocabulary').value.trim();
+  const forbidden_words = document.getElementById('persona-forbidden').value.trim();
+  const custom_instructions = document.getElementById('persona-instructions').value.trim();
+
+  if (!name) {
+    showMessage(messageEl, 'Le nom du persona est requis.', 'error');
+    return;
+  }
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/personas`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name, tone_of_voice, vocabulary, forbidden_words, custom_instructions }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'enregistrement.');
+
+    ['persona-name', 'persona-tone', 'persona-vocabulary', 'persona-forbidden', 'persona-instructions'].forEach((id) => {
+      document.getElementById(id).value = '';
+    });
+    showMessage(messageEl, 'Persona enregistré !', 'success');
+    await loadPersonas();
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+  }
+}
+
+async function deletePersona(id) {
+  const confirmed = window.confirm('Supprimer ce persona ?');
+  if (!confirmed) return;
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/personas/${id}`, { method: 'DELETE', headers });
+    if (!res.ok && res.status !== 204) throw new Error('Erreur lors de la suppression.');
+    await loadPersonas();
+  } catch (err) {
+    alert(friendlyErrorMessage(err));
+  }
+}
+
+async function extractPersonaFromScript() {
+  const messageEl = document.getElementById('persona-message');
+  clearMessage(messageEl);
+
+  const script = document.getElementById('persona-extract-script').value;
+  if (!script.trim()) {
+    showMessage(messageEl, 'Colle un script à analyser.', 'error');
+    return;
+  }
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  const btn = document.getElementById('btn-extract-persona');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Analyse en cours...';
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/extract-persona`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ script }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'analyse.');
+
+    const persona = data.persona || {};
+    document.getElementById('persona-name').value = persona.name || '';
+    document.getElementById('persona-tone').value = persona.tone_of_voice || '';
+    document.getElementById('persona-vocabulary').value = persona.vocabulary || '';
+    document.getElementById('persona-forbidden').value = persona.forbidden_words || '';
+    document.getElementById('persona-instructions').value = persona.custom_instructions || '';
+
+    showMessage(messageEl, 'Persona extrait ! Vérifie les champs ci-dessous puis clique sur "Enregistrer ce persona".', 'success');
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
   }
 }
 
