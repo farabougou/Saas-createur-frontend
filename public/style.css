@@ -379,3 +379,18 @@ button.icon-btn:hover {
   font-size: 13px;
   color: var(--muted);
 }
+
+/* ===================== Spinner (génération vidéo en cours) ===================== */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
