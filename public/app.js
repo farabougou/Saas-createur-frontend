@@ -25,14 +25,6 @@ const CONTENT_TYPE_LABELS = {
   repurpose_content: 'Adaptation multicanal',
 };
 
-// Retient l'id de l'analyse TikTok (tiktok_analyses) associée à chaque
-// conversation d'analyse de vidéo, pour pouvoir afficher les boutons
-// d'action rapide en dessous du rapport. Rempli à la fois immédiatement
-// après une nouvelle analyse (via l'en-tête X-Analysis-Id) et à chaque
-// chargement de l'historique (via /api/tiktok/analyses), pour que les
-// boutons réapparaissent même après un rechargement de page.
-const analysisIdByConversation = {};
-
 function contentTypeLabel(type) {
   return CONTENT_TYPE_LABELS[type] || type;
 }
@@ -40,6 +32,10 @@ function contentTypeLabel(type) {
 function renderAiResponse(text) {
   if (!text) return '';
   return window.marked.parse(text);
+}
+
+function escapeHtml(text) {
+  return (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // Traduit une erreur technique (souvent un problème réseau) en message
@@ -73,24 +69,11 @@ const el = {
   aiRequestMessage: document.getElementById('ai-request-message'),
   formCreatorProfile: document.getElementById('form-creator-profile'),
   creatorProfileMessage: document.getElementById('creator-profile-message'),
-  sidebarUserEmail: document.getElementById('sidebar-user-email'),
-  btnOpenProfile: document.getElementById('btn-open-profile'),
-  btnCloseProfile: document.getElementById('btn-close-profile'),
   profileModal: document.getElementById('profile-modal'),
-  btnNewConversation: document.getElementById('btn-new-conversation'),
-  conversationsList: document.getElementById('conversations-list'),
-  homeScreen: document.getElementById('home-screen'),
-  conversationView: document.getElementById('conversation-view'),
-  conversationThread: document.getElementById('conversation-thread'),
-  formReply: document.getElementById('form-reply'),
-  replyInput: document.getElementById('reply-input'),
-  replyMessage: document.getElementById('reply-message'),
+  btnCloseProfile: document.getElementById('btn-close-profile'),
+  extraTools: document.getElementById('extra-tools'),
   tiktokCard: document.getElementById('tiktok-card'),
 };
-
-let allThreads = [];
-let selectedConversationId = null;
-let conversationTitles = {};
 
 function formatPrice(plan) {
   if (plan.price_cents === 0) return 'Gratuit';
@@ -103,6 +86,12 @@ function showMessage(container, text, type = 'error') {
 
 function clearMessage(container) {
   container.innerHTML = '';
+}
+
+async function authHeadersOrNull() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) return null;
+  return { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
 }
 
 async function loadPlans() {
@@ -189,8 +178,6 @@ async function loadDashboard() {
 
   const authHeaders = { Authorization: `Bearer ${session.access_token}` };
 
-  el.sidebarUserEmail.textContent = session.user.email;
-
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
     if (!res.ok) throw new Error('Erreur de chargement du profil.');
@@ -216,8 +203,6 @@ async function loadDashboard() {
   ensurePersonaSectionUI();
   ensurePersonaDropdownUI();
   ensureRepliesUI();
-  showHomeScreen();
-  await loadRequests(authHeaders);
   await loadSponsorships();
   await loadPersonas();
 }
@@ -264,7 +249,7 @@ function ensureStoryboardUI() {
     <div id="storyboard-results" style="margin-top:16px;display:grid;gap:12px;"></div>
   `;
 
-  el.homeScreen.appendChild(section);
+  el.extraTools.appendChild(section);
   document.getElementById('btn-generate-storyboard').addEventListener('click', generateStoryboard);
 }
 
@@ -310,10 +295,6 @@ async function generateStoryboard() {
     btn.disabled = false;
     btn.textContent = 'Générer le storyboard';
   }
-}
-
-function escapeHtml(text) {
-  return (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function renderStoryboard(scenes) {
@@ -381,7 +362,7 @@ async function loadCreatorProfile(authHeaders) {
   }
 }
 
-// --------------------- Connexion TikTok ---------------------
+// --------------------- Connexion TikTok (tuile "Statistiques Récentes") ---------------------
 
 async function loadTikTokStatus(authHeaders) {
   try {
@@ -483,7 +464,7 @@ async function loadTikTokProfile(authHeaders) {
       btn.addEventListener('click', () => {
         const { title, views, likes, comments, shares, url } = btn.dataset;
         const prompt = `Analyse cette vidéo TikTok :\n- Titre : "${title}"\n- Vues : ${views}\n- Likes : ${likes}\n- Commentaires : ${comments}\n- Partages : ${shares}`;
-        startAiRequest('analyse_video', prompt, { video_url: url, views: Number(views) || 0, likes: Number(likes) || 0 });
+        runGeneration('analyse_video', prompt, { video_url: url, views: Number(views) || 0, likes: Number(likes) || 0 });
       });
     });
   } catch (err) {
@@ -561,262 +542,25 @@ el.formCreatorProfile.addEventListener('submit', async (e) => {
   }
 });
 
-el.btnOpenProfile.addEventListener('click', () => {
-  el.profileModal.classList.remove('hidden');
+el.profileModal.addEventListener('click', (e) => {
+  if (e.target === el.profileModal) el.profileModal.classList.add('hidden');
 });
 el.btnCloseProfile.addEventListener('click', () => {
   el.profileModal.classList.add('hidden');
 });
-el.profileModal.addEventListener('click', (e) => {
-  if (e.target === el.profileModal) el.profileModal.classList.add('hidden');
-});
 
-function groupByConversation(requests) {
-  const map = new Map();
-  for (const r of requests) {
-    const key = r.conversation_id || r.id;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(r);
-  }
-
-  const threads = Array.from(map.entries()).map(([key, turns]) => {
-    const sorted = [...turns].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    return {
-      conversationId: key,
-      requestType: sorted[0].request_type,
-      turns: sorted,
-      lastCreatedAt: sorted[sorted.length - 1].created_at,
-    };
-  });
-
-  threads.sort((a, b) => new Date(b.lastCreatedAt) - new Date(a.lastCreatedAt));
-  return threads;
-}
-
-async function loadRequests(authHeaders) {
-  try {
-    const [requestsRes, titlesRes, analysesRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/ai-requests`, { headers: authHeaders }),
-      fetch(`${API_BASE_URL}/api/conversations`, { headers: authHeaders }),
-      fetch(`${API_BASE_URL}/api/tiktok/analyses`, { headers: authHeaders }),
-    ]);
-    if (!requestsRes.ok) throw new Error('Erreur de chargement de l\'historique.');
-    const requests = await requestsRes.json();
-    const titles = titlesRes.ok ? await titlesRes.json() : [];
-    const analyses = analysesRes.ok ? await analysesRes.json() : [];
-
-    conversationTitles = {};
-    for (const t of titles) {
-      conversationTitles[t.conversation_id] = t.title;
-    }
-
-    // Réassocie chaque conversation d'analyse de vidéo à son id d'analyse,
-    // pour que les boutons d'action rapide réapparaissent même après un
-    // rechargement de page (pas seulement juste après une analyse fraîche).
-    for (const a of analyses) {
-      analysisIdByConversation[a.conversation_id] = a.id;
-    }
-
-    allThreads = groupByConversation(requests);
-    renderSidebar();
-
-    if (selectedConversationId) {
-      const stillExists = allThreads.some((t) => t.conversationId === selectedConversationId);
-      if (stillExists) {
-        renderConversationThread();
-      } else {
-        showHomeScreen();
-      }
-    }
-  } catch (err) {
-    el.conversationsList.innerHTML = `<p class="muted" style="padding:10px 12px;">Erreur : ${friendlyErrorMessage(err)}</p>`;
-  }
-}
-
-function renderSidebar() {
-  if (allThreads.length === 0) {
-    el.conversationsList.innerHTML = '<p class="muted" style="padding:10px 12px;">Aucune conversation.</p>';
-    return;
-  }
-
-  el.conversationsList.innerHTML = allThreads
-    .map((thread) => {
-      const lastTurn = thread.turns[thread.turns.length - 1];
-      const firstPrompt = thread.turns[0].prompt;
-      const defaultLabel = firstPrompt.length > 42 ? `${firstPrompt.slice(0, 42)}…` : firstPrompt;
-      const label = conversationTitles[thread.conversationId] || defaultLabel;
-      const isActive = thread.conversationId === selectedConversationId;
-      return `
-        <div class="conversation-item ${isActive ? 'active' : ''}" data-conversation-id="${thread.conversationId}">
-          <span class="conversation-label"><span class="conv-status-dot status-${lastTurn.status}"></span>${label}</span>
-          <span class="conversation-actions">
-            <button class="icon-btn btn-rename-conversation" title="Renommer">✏️</button>
-            <button class="icon-btn btn-delete-conversation" title="Supprimer">🗑</button>
-          </span>
-        </div>
-      `;
-    })
-    .join('');
-}
-
-el.conversationsList.addEventListener('click', (e) => {
-  const item = e.target.closest('.conversation-item');
-  if (!item) return;
-  const conversationId = item.dataset.conversationId;
-
-  if (e.target.closest('.btn-rename-conversation')) {
-    e.stopPropagation();
-    renameConversation(conversationId);
-    return;
-  }
-  if (e.target.closest('.btn-delete-conversation')) {
-    e.stopPropagation();
-    deleteConversation(conversationId);
-    return;
-  }
-  selectConversation(conversationId);
-});
-
-async function renameConversation(conversationId) {
-  const currentTitle = conversationTitles[conversationId] || '';
-  const newTitle = window.prompt('Nouveau nom de la conversation :', currentTitle);
-  if (newTitle === null || !newTitle.trim()) return;
-
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session) return;
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ title: newTitle.trim() }),
-    });
-    if (!res.ok) throw new Error('Erreur lors du renommage.');
-    conversationTitles[conversationId] = newTitle.trim();
-    renderSidebar();
-  } catch (err) {
-    alert(friendlyErrorMessage(err));
-  }
-}
-
-async function deleteConversation(conversationId) {
-  const confirmed = window.confirm('Supprimer définitivement cette conversation ?');
-  if (!confirmed) return;
-
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session) return;
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    if (!res.ok && res.status !== 204) throw new Error('Erreur lors de la suppression.');
-
-    if (selectedConversationId === conversationId) {
-      showHomeScreen();
-    }
-    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
-    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
-  } catch (err) {
-    alert(friendlyErrorMessage(err));
-  }
-}
-
-el.btnNewConversation.addEventListener('click', () => {
-  clearMessage(el.aiRequestMessage);
-  document.getElementById('request-type').value = '';
-  document.getElementById('request-prompt').value = '';
-  showHomeScreen();
-});
-
-function showHomeScreen() {
-  selectedConversationId = null;
-  el.conversationView.classList.add('hidden');
-  el.homeScreen.classList.remove('hidden');
-  renderSidebar();
-}
-
-function selectConversation(conversationId) {
-  selectedConversationId = conversationId;
-  el.homeScreen.classList.add('hidden');
-  el.conversationView.classList.remove('hidden');
-  renderSidebar();
-  renderConversationThread();
-}
-
-function renderConversationThread() {
-  const thread = allThreads.find((t) => t.conversationId === selectedConversationId);
-  if (!thread) return;
-
-  el.conversationThread.innerHTML = thread.turns
-    .map(
-      (r) => `
-      <div class="chat-turn">
-        <div class="chat-prompt">${r.prompt}</div>
-        ${r.response ? `<div class="ai-response">${renderAiResponse(r.response)}</div>` : ''}
-        ${r.status === 'pending' ? '<p class="muted">Génération en cours...</p>' : ''}
-        ${r.status === 'failed' && r.error_message ? `<p class="muted">Erreur : ${r.error_message}</p>` : ''}
-      </div>
-    `
-    )
-    .join('');
-
-  const lastTurn = thread.turns[thread.turns.length - 1];
-  el.formReply.classList.toggle('hidden', lastTurn.status !== 'completed');
-
-  // Actions rapides sous un rapport d'analyse de vidéo TikTok terminé :
-  // permet de réutiliser ce qui a marché pour générer un nouveau script.
-  const analysisId = analysisIdByConversation[thread.conversationId];
-  if (thread.requestType === 'analyse_video' && analysisId && lastTurn.status === 'completed') {
-    const actionLabels = {
-      episode2: "Générer l'épisode 2",
-      spinoff: 'Créer un spin-off sur le même ton',
-      apply_format: 'Appliquer ce format à une autre histoire',
-    };
-    const ctaHtml = `
-      <div class="chat-turn" style="display:flex;gap:8px;flex-wrap:wrap;">
-        ${Object.entries(actionLabels)
-          .map(([action, label]) => `<button class="secondary btn-generate-from-success" data-action="${action}">${label}</button>`)
-          .join('')}
-      </div>
-    `;
-    el.conversationThread.insertAdjacentHTML('beforeend', ctaHtml);
-    el.conversationThread.querySelectorAll('.btn-generate-from-success').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        generateFromSuccess(analysisId, action, actionLabels[action]);
-      });
-    });
-  }
-
-  // Boutons "recyclage multicanal" sous n'importe quel script terminé :
-  // permet d'adapter nativement ce contenu à d'autres plateformes, sans
-  // repartir de zéro.
-  if (lastTurn.status === 'completed' && lastTurn.response) {
-    const repurposeHtml = `
-      <div class="chat-turn" style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="secondary btn-repurpose" data-script-id="${lastTurn.id}" data-platform="Twitter_Thread">🔁 Adapter en Thread Twitter</button>
-        <button class="secondary btn-repurpose" data-script-id="${lastTurn.id}" data-platform="LinkedIn_Post">🔁 Adapter en Post LinkedIn</button>
-      </div>
-    `;
-    el.conversationThread.insertAdjacentHTML('beforeend', repurposeHtml);
-    el.conversationThread.querySelectorAll('.btn-repurpose').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        repurposeContent(btn.dataset.scriptId, btn.dataset.platform);
-      });
-    });
-  }
-}
+// --------------------- Génération de contenu (modales) ---------------------
+// Toute génération (script principal, "générer à partir d'un succès",
+// recyclage multicanal) s'affiche désormais dans une modale de résultat
+// générique, plutôt que dans un fil de conversation. Les boutons d'action
+// (CTA après une analyse vidéo, recyclage vers une autre plateforme) sont
+// ajoutés dynamiquement sous le résultat, à partir des en-têtes
+// X-Analysis-Id / X-Request-Id renvoyés par le serveur.
 
 // Envoie une requête POST en streaming vers n'importe quelle route du
-// backend qui répond en texte brut morceau par morceau (ai-requests,
-// generate-from-success...), et renvoie le texte complet une fois terminé,
-// ainsi que l'éventuel en-tête X-Analysis-Id (présent seulement pour une
-// analyse de vidéo TikTok fraîchement créée).
+// backend qui répond en texte brut morceau par morceau, et renvoie le texte
+// complet une fois terminé, ainsi que les éventuels en-têtes X-Analysis-Id
+// et X-Request-Id.
 async function streamFromEndpoint(endpoint, body, onChunk) {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (!session) throw new Error('Session expirée, reconnecte-toi.');
@@ -836,6 +580,7 @@ async function streamFromEndpoint(endpoint, body, onChunk) {
   }
 
   const analysisId = res.headers.get('X-Analysis-Id');
+  const requestId = res.headers.get('X-Request-Id');
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -849,55 +594,82 @@ async function streamFromEndpoint(endpoint, body, onChunk) {
     if (onChunk) onChunk(chunkText);
   }
 
-  return { fullText, analysisId };
+  return { fullText, analysisId, requestId };
 }
 
-async function streamAiMessage({ request_type, prompt, conversation_id, video_url, views, likes, persona_id, onChunk }) {
-  return streamFromEndpoint('/api/ai-requests', { request_type, prompt, conversation_id, video_url, views, likes, persona_id }, onChunk);
+async function streamAiMessage({ request_type, prompt, video_url, views, likes, persona_id, onChunk }) {
+  return streamFromEndpoint('/api/ai-requests', { request_type, prompt, video_url, views, likes, persona_id }, onChunk);
 }
 
-// Lance une nouvelle requête IA à partir de n'importe où dans l'interface
-// (formulaire principal, ou bouton "Analyser cette vidéo" sur une vignette
-// TikTok) : ouvre une nouvelle conversation, affiche la réponse au fur et à
-// mesure, puis recharge l'historique. Renvoie true en cas de succès.
-// `extra` peut contenir { video_url, views, likes } pour une analyse vidéo.
-async function startAiRequest(request_type, prompt, extra = {}) {
-  clearMessage(el.aiRequestMessage);
-  const newConversationId = crypto.randomUUID();
+function openResultModal(title, prompt) {
+  document.getElementById('result-modal-title').textContent = title;
+  document.getElementById('result-prompt').textContent = prompt || '';
+  document.getElementById('result-content').textContent = '';
+  document.getElementById('result-actions').innerHTML = '';
+  document.getElementById('result-modal').classList.remove('hidden');
+}
 
-  selectedConversationId = newConversationId;
-  el.homeScreen.classList.add('hidden');
-  el.conversationView.classList.remove('hidden');
-  el.formReply.classList.add('hidden');
-  el.conversationThread.innerHTML = `
-    <div class="chat-turn">
-      <div class="chat-prompt">${prompt}</div>
-      <div class="ai-response" id="streaming-preview"></div>
-    </div>
-  `;
-  const previewEl = document.getElementById('streaming-preview');
+function renderResultActions({ requestType, analysisId, requestId, response }) {
+  const actionsEl = document.getElementById('result-actions');
+  actionsEl.innerHTML = '';
+  if (!response) return;
+
+  // Actions rapides sous un rapport d'analyse de vidéo TikTok terminé :
+  // permet de réutiliser ce qui a marché pour générer un nouveau script.
+  if (requestType === 'analyse_video' && analysisId) {
+    const actionLabels = {
+      episode2: "Générer l'épisode 2",
+      spinoff: 'Créer un spin-off sur le même ton',
+      apply_format: 'Appliquer ce format à une autre histoire',
+    };
+    Object.entries(actionLabels).forEach(([action, label]) => {
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.textContent = label;
+      btn.addEventListener('click', () => runGenerateFromSuccess(analysisId, action, label));
+      actionsEl.appendChild(btn);
+    });
+  }
+
+  // Boutons "recyclage multicanal" sous n'importe quel script terminé.
+  if (requestId) {
+    const twitterBtn = document.createElement('button');
+    twitterBtn.className = 'secondary';
+    twitterBtn.textContent = '🔁 Adapter en Thread Twitter';
+    twitterBtn.addEventListener('click', () => runRepurpose(requestId, 'Twitter_Thread'));
+    actionsEl.appendChild(twitterBtn);
+
+    const linkedinBtn = document.createElement('button');
+    linkedinBtn.className = 'secondary';
+    linkedinBtn.textContent = '🔁 Adapter en Post LinkedIn';
+    linkedinBtn.addEventListener('click', () => runRepurpose(requestId, 'LinkedIn_Post'));
+    actionsEl.appendChild(linkedinBtn);
+  }
+}
+
+// Lance une nouvelle génération IA (formulaire principal, ou bouton
+// "Analyser cette vidéo" sur une vignette TikTok) et affiche le résultat
+// dans la modale de résultat. `extra` peut contenir { video_url, views,
+// likes, persona_id }. Renvoie true en cas de succès.
+async function runGeneration(request_type, prompt, extra = {}) {
+  openResultModal(contentTypeLabel(request_type), prompt);
+  const contentEl = document.getElementById('result-content');
 
   try {
-    const { analysisId } = await streamAiMessage({
+    const { fullText, analysisId, requestId } = await streamAiMessage({
       request_type,
       prompt,
-      conversation_id: newConversationId,
       ...extra,
       onChunk: (chunkText) => {
-        previewEl.textContent += chunkText;
+        contentEl.textContent += chunkText;
       },
     });
 
-    if (analysisId) {
-      analysisIdByConversation[newConversationId] = analysisId;
-    }
-
-    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
-    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
+    contentEl.innerHTML = renderAiResponse(fullText);
+    renderResultActions({ requestType: request_type, analysisId, requestId, response: fullText });
     return true;
   } catch (err) {
-    showHomeScreen();
-    showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
+    contentEl.innerHTML = `<div class="message error">${friendlyErrorMessage(err)}</div>`;
     return false;
   }
 }
@@ -905,36 +677,23 @@ async function startAiRequest(request_type, prompt, extra = {}) {
 // Déclenché par un des 3 boutons d'action rapide sous un rapport d'analyse
 // de vidéo TikTok : génère un nouveau script qui réutilise ce qui a fait le
 // succès de la vidéo analysée.
-async function generateFromSuccess(analysisId, action, displayPrompt) {
-  clearMessage(el.aiRequestMessage);
-  const newConversationId = crypto.randomUUID();
-
-  selectedConversationId = newConversationId;
-  el.homeScreen.classList.add('hidden');
-  el.conversationView.classList.remove('hidden');
-  el.formReply.classList.add('hidden');
-  el.conversationThread.innerHTML = `
-    <div class="chat-turn">
-      <div class="chat-prompt">${displayPrompt}</div>
-      <div class="ai-response" id="streaming-preview"></div>
-    </div>
-  `;
-  const previewEl = document.getElementById('streaming-preview');
+async function runGenerateFromSuccess(analysisId, action, displayPrompt) {
+  openResultModal(contentTypeLabel('generate_from_success'), displayPrompt);
+  const contentEl = document.getElementById('result-content');
 
   try {
-    await streamFromEndpoint(
+    const { fullText, requestId } = await streamFromEndpoint(
       '/api/generate-from-success',
-      { analysis_id: analysisId, action, conversation_id: newConversationId },
+      { analysis_id: analysisId, action },
       (chunkText) => {
-        previewEl.textContent += chunkText;
+        contentEl.textContent += chunkText;
       }
     );
 
-    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
-    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
+    contentEl.innerHTML = renderAiResponse(fullText);
+    renderResultActions({ requestType: 'generate_from_success', requestId, response: fullText });
   } catch (err) {
-    showHomeScreen();
-    showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
+    contentEl.innerHTML = `<div class="message error">${friendlyErrorMessage(err)}</div>`;
   }
 }
 
@@ -943,42 +702,56 @@ const REPURPOSE_PLATFORM_LABELS = {
   LinkedIn_Post: 'Post LinkedIn',
 };
 
-// Déclenché par un des boutons "🔁 Adapter en ..." sous un script terminé :
-// adapte nativement ce script à la plateforme choisie, en conservant son
-// ton d'origine.
-async function repurposeContent(scriptId, platform) {
-  clearMessage(el.aiRequestMessage);
-  const newConversationId = crypto.randomUUID();
-  const displayPrompt = `Adapter ce script pour : ${REPURPOSE_PLATFORM_LABELS[platform] || platform}`;
-
-  selectedConversationId = newConversationId;
-  el.homeScreen.classList.add('hidden');
-  el.conversationView.classList.remove('hidden');
-  el.formReply.classList.add('hidden');
-  el.conversationThread.innerHTML = `
-    <div class="chat-turn">
-      <div class="chat-prompt">${displayPrompt}</div>
-      <div class="ai-response" id="streaming-preview"></div>
-    </div>
-  `;
-  const previewEl = document.getElementById('streaming-preview');
+// Déclenché par un bouton "🔁 Adapter en ..." sous un script terminé, ou
+// depuis la modale "Choisis un script à adapter" : adapte nativement ce
+// script à la plateforme choisie, en conservant son ton d'origine.
+async function runRepurpose(scriptId, platform) {
+  const platformLabel = REPURPOSE_PLATFORM_LABELS[platform] || platform;
+  openResultModal(platformLabel, `Adaptation : ${platformLabel}`);
+  const contentEl = document.getElementById('result-content');
 
   try {
-    await streamFromEndpoint(
+    const { fullText, requestId } = await streamFromEndpoint(
       '/api/repurpose-content',
-      { script_id: scriptId, platform, conversation_id: newConversationId },
+      { script_id: scriptId, platform },
       (chunkText) => {
-        previewEl.textContent += chunkText;
+        contentEl.textContent += chunkText;
       }
     );
 
-    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
-    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
+    contentEl.innerHTML = renderAiResponse(fullText);
+    renderResultActions({ requestType: 'repurpose_content', requestId, response: fullText });
   } catch (err) {
-    showHomeScreen();
-    showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
+    contentEl.innerHTML = `<div class="message error">${friendlyErrorMessage(err)}</div>`;
   }
 }
+
+document.getElementById('btn-close-result').addEventListener('click', () => {
+  document.getElementById('result-modal').classList.add('hidden');
+});
+document.getElementById('result-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'result-modal') document.getElementById('result-modal').classList.add('hidden');
+});
+document.getElementById('btn-copy-result').addEventListener('click', () => {
+  const text = document.getElementById('result-content').innerText;
+  navigator.clipboard.writeText(text);
+  const btn = document.getElementById('btn-copy-result');
+  const original = btn.textContent;
+  btn.textContent = '✅ Copié !';
+  setTimeout(() => { btn.textContent = original; }, 1500);
+});
+
+// --------------------- Modale "Créer un script" ---------------------
+
+document.getElementById('btn-quick-create-script').addEventListener('click', () => {
+  document.getElementById('create-script-modal').classList.remove('hidden');
+});
+document.getElementById('btn-close-create-script').addEventListener('click', () => {
+  document.getElementById('create-script-modal').classList.add('hidden');
+});
+document.getElementById('create-script-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'create-script-modal') document.getElementById('create-script-modal').classList.add('hidden');
+});
 
 el.formAiRequest.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -992,7 +765,8 @@ el.formAiRequest.addEventListener('submit', async (e) => {
   submitButton.disabled = true;
   submitButton.textContent = 'Génération en cours...';
 
-  const success = await startAiRequest(request_type, prompt, persona_id ? { persona_id } : {});
+  document.getElementById('create-script-modal').classList.add('hidden');
+  const success = await runGeneration(request_type, prompt, persona_id ? { persona_id } : {});
   if (success) {
     el.formAiRequest.reset();
   }
@@ -1001,76 +775,149 @@ el.formAiRequest.addEventListener('submit', async (e) => {
   submitButton.textContent = 'Envoyer';
 });
 
-el.formReply.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  clearMessage(el.replyMessage);
-  if (!selectedConversationId) return;
+// --------------------- Modale "Choisir un script à recycler" ---------------------
+// Déclenchée par l'action rapide "🔁 Transformer en Thread" : liste les
+// scripts déjà générés et terminés, pour en choisir un à adapter.
 
-  const thread = allThreads.find((t) => t.conversationId === selectedConversationId);
-  if (!thread) return;
+document.getElementById('btn-quick-repurpose').addEventListener('click', openRepurposePicker);
+document.getElementById('btn-close-repurpose-picker').addEventListener('click', () => {
+  document.getElementById('repurpose-picker-modal').classList.add('hidden');
+});
+document.getElementById('repurpose-picker-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'repurpose-picker-modal') document.getElementById('repurpose-picker-modal').classList.add('hidden');
+});
 
-  const request_type = thread.requestType;
-  const prompt = el.replyInput.value;
-  const submitButton = el.formReply.querySelector('button');
+async function openRepurposePicker() {
+  const modal = document.getElementById('repurpose-picker-modal');
+  const listEl = document.getElementById('repurpose-picker-list');
+  listEl.innerHTML = '<p class="muted">Chargement...</p>';
+  modal.classList.remove('hidden');
 
-  submitButton.disabled = true;
-  submitButton.textContent = 'Génération en cours...';
-  el.replyInput.value = '';
-  el.formReply.classList.add('hidden');
-
-  const previewTurn = document.createElement('div');
-  previewTurn.className = 'chat-turn';
-  previewTurn.innerHTML = `<div class="chat-prompt">${prompt}</div><div class="ai-response" id="streaming-preview"></div>`;
-  el.conversationThread.appendChild(previewTurn);
-  const previewEl = previewTurn.querySelector('#streaming-preview');
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
 
   try {
-    await streamAiMessage({
-      request_type,
-      prompt,
-      conversation_id: selectedConversationId,
-      onChunk: (chunkText) => {
-        previewEl.textContent += chunkText;
-      },
+    const res = await fetch(`${API_BASE_URL}/api/ai-requests`, { headers });
+    if (!res.ok) throw new Error('Erreur de chargement.');
+    const requests = await res.json();
+    const completed = requests.filter((r) => r.status === 'completed' && r.response);
+
+    if (!completed.length) {
+      listEl.innerHTML = '<p class="muted">Aucun script terminé pour le moment. Crée d\'abord un script avec « Créer un script ».</p>';
+      return;
+    }
+
+    listEl.innerHTML = completed
+      .slice(0, 20)
+      .map((r) => {
+        const label = r.prompt.length > 60 ? `${r.prompt.slice(0, 60)}…` : r.prompt;
+        const date = new Date(r.created_at).toLocaleDateString('fr-FR');
+        return `
+          <div class="card" style="background:rgba(255,255,255,0.03);padding:10px;font-size:13px;">
+            <p style="margin:0 0 6px;"><strong>${contentTypeLabel(r.request_type)}</strong> <span class="muted" style="font-size:11px;">· ${date}</span></p>
+            <p class="muted" style="margin:0 0 8px;">${escapeHtml(label)}</p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="secondary btn-picker-repurpose" data-id="${r.id}" data-platform="Twitter_Thread" style="font-size:12px;">🔁 Thread Twitter</button>
+              <button class="secondary btn-picker-repurpose" data-id="${r.id}" data-platform="LinkedIn_Post" style="font-size:12px;">🔁 Post LinkedIn</button>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    listEl.querySelectorAll('.btn-picker-repurpose').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        modal.classList.add('hidden');
+        runRepurpose(btn.dataset.id, btn.dataset.platform);
+      });
     });
-
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    await loadRequests({ Authorization: `Bearer ${session.access_token}` });
   } catch (err) {
-    showMessage(el.replyMessage, friendlyErrorMessage(err), 'error');
-    el.formReply.classList.remove('hidden');
-  } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = 'Envoyer';
+    listEl.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
   }
-});
-
-supabaseClient.auth.onAuthStateChange((_event, session) => {
-  if (session) {
-    el.viewPublic.classList.add('hidden');
-    el.viewDashboard.classList.remove('hidden');
-    el.nav.innerHTML = `
-      <span class="muted">${session.user.email}</span>
-      <button class="secondary" id="btn-logout">Se déconnecter</button>
-    `;
-    document.getElementById('btn-logout').addEventListener('click', logout);
-    loadDashboard();
-  } else {
-    el.viewDashboard.classList.add('hidden');
-    el.viewPublic.classList.remove('hidden');
-    el.nav.innerHTML = '';
-  }
-});
-
-// Affiche un message après le retour de la connexion TikTok (succès ou échec)
-const tiktokParam = new URLSearchParams(window.location.search).get('tiktok');
-if (tiktokParam === 'success') {
-  alert('Compte TikTok connecté avec succès !');
-  window.history.replaceState({}, '', window.location.pathname);
-} else if (tiktokParam === 'error') {
-  alert('La connexion TikTok a échoué. Réessaie.');
-  window.history.replaceState({}, '', window.location.pathname);
 }
+
+// --------------------- Action rapide "Générer l'Audio" ---------------------
+// Pas de fournisseur de synthèse vocale (TTS) branché pour l'instant : on
+// est honnête là-dessus plutôt que d'afficher un bouton qui ne fait rien.
+
+document.getElementById('btn-quick-audio').addEventListener('click', () => {
+  alert(
+    "🔊 La génération audio n'est pas encore branchée : il faudrait d'abord connecter un service de synthèse vocale (ex : ElevenLabs). Dis-moi si tu veux que je l'ajoute, et je m'en occupe !"
+  );
+});
+
+// --------------------- Tuile "Radar" (tendances) ---------------------
+// Recherche à la demande (bouton "Actualiser"), pas automatique, pour ne
+// pas consommer une recherche web à chaque ouverture du tableau de bord.
+
+document.getElementById('btn-refresh-radar').addEventListener('click', loadRadar);
+
+async function loadRadar() {
+  const contentEl = document.getElementById('radar-content');
+  const btn = document.getElementById('btn-refresh-radar');
+
+  contentEl.innerHTML = '<p class="muted">Recherche des tendances en cours...</p>';
+  btn.disabled = true;
+  btn.textContent = 'Recherche...';
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/trending-topics`, { method: 'POST', headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de la recherche des tendances.');
+
+    contentEl.innerHTML = renderAiResponse(data.markdown);
+  } catch (err) {
+    contentEl.innerHTML = `<div class="message error">${friendlyErrorMessage(err)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Actualiser';
+  }
+}
+
+// --------------------- Tuile "Mes Personnages" (avatars) ---------------------
+
+const AVATAR_COLORS = ['#f97316', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#eab308'];
+
+function avatarColorForName(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function renderPersonasTile() {
+  const tileEl = document.getElementById('personas-tile-list');
+  if (!tileEl) return;
+
+  if (!allPersonas.length) {
+    tileEl.innerHTML = '<p class="muted" style="font-size:12px;">Aucun persona pour l\'instant. Clique sur « Gérer » pour en créer un.</p>';
+    return;
+  }
+
+  tileEl.innerHTML = allPersonas
+    .slice(0, 8)
+    .map((p) => {
+      const name = p.name || '?';
+      const initial = name.trim().charAt(0).toUpperCase();
+      const color = avatarColorForName(name);
+      const shortName = name.length > 10 ? `${name.slice(0, 9)}…` : name;
+      return `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:56px;" title="${escapeHtml(name)}">
+          <div style="width:40px;height:40px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex-shrink:0;">${initial}</div>
+          <span style="font-size:10px;text-align:center;line-height:1.2;" class="muted">${escapeHtml(shortName)}</span>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+document.getElementById('btn-manage-personas').addEventListener('click', () => {
+  document.getElementById('persona-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 
 // --------------------- Sponsoring (mini-CRM) ---------------------
 // Suivi des prospects de marque sous forme de Kanban (À contacter / En
@@ -1086,12 +933,6 @@ const SPONSOR_STATUS_LABELS = {
   signe: 'Signé',
 };
 const SPONSOR_STATUS_ORDER = ['a_contacter', 'en_negociation', 'signe'];
-
-async function authHeadersOrNull() {
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session) return null;
-  return { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' };
-}
 
 function ensureSponsorshipUI() {
   if (document.getElementById('sponsorship-section')) return; // déjà injecté
@@ -1115,7 +956,7 @@ function ensureSponsorshipUI() {
     <div id="sponsor-kanban" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px;"></div>
   `;
 
-  el.homeScreen.appendChild(section);
+  el.extraTools.appendChild(section);
   document.getElementById('btn-add-sponsor').addEventListener('click', addSponsorship);
   ensureSponsorPitchModal();
 }
@@ -1395,7 +1236,7 @@ function ensurePersonaSectionUI() {
     <h3 style="margin-top:0;">🎭 Mes Voix &amp; Personnages</h3>
     <p class="muted" style="margin-top:0;">
       Crée des personas (ton, vocabulaire, mots interdits) pour que l'IA écrive avec une voix précise et cohérente
-      au lieu d'une voix générique. Choisis-en un dans le menu déroulant, au-dessus du bouton "Envoyer", avant de générer du contenu.
+      au lieu d'une voix générique. Choisis-en un dans le menu déroulant de la modale « Créer un script », avant de générer du contenu.
     </p>
 
     <details style="margin:10px 0;">
@@ -1420,7 +1261,7 @@ function ensurePersonaSectionUI() {
     <div id="persona-list" style="display:grid;gap:8px;"></div>
   `;
 
-  el.homeScreen.appendChild(section);
+  el.extraTools.appendChild(section);
   document.getElementById('btn-extract-persona').addEventListener('click', extractPersonaFromScript);
   document.getElementById('btn-save-persona').addEventListener('click', savePersona);
 }
@@ -1453,9 +1294,12 @@ async function loadPersonas() {
     renderPersonaList();
     renderPersonaDropdownOptions();
     renderRepliesPersonaOptions();
+    renderPersonasTile();
   } catch (err) {
     const listEl = document.getElementById('persona-list');
     if (listEl) listEl.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
+    const tileEl = document.getElementById('personas-tile-list');
+    if (tileEl) tileEl.innerHTML = `<p class="muted" style="font-size:12px;">Erreur de chargement.</p>`;
   }
 }
 
@@ -1627,7 +1471,7 @@ function ensureRepliesUI() {
     <div id="replies-results" style="margin-top:12px;display:grid;gap:8px;"></div>
   `;
 
-  el.homeScreen.appendChild(section);
+  el.extraTools.appendChild(section);
   document.getElementById('btn-generate-replies').addEventListener('click', generateReplies);
 }
 
@@ -1717,6 +1561,39 @@ function renderReplyResults(replies, videoUrl) {
       setTimeout(() => { copyBtn.textContent = original; }, 1500);
     });
   });
+}
+
+// --------------------------------------------------------------
+
+supabaseClient.auth.onAuthStateChange((_event, session) => {
+  if (session) {
+    el.viewPublic.classList.add('hidden');
+    el.viewDashboard.classList.remove('hidden');
+    el.nav.innerHTML = `
+      <span class="muted">${session.user.email}</span>
+      <button class="secondary" id="btn-open-profile-nav">⚙️ Profil</button>
+      <button class="secondary" id="btn-logout">Se déconnecter</button>
+    `;
+    document.getElementById('btn-open-profile-nav').addEventListener('click', () => {
+      el.profileModal.classList.remove('hidden');
+    });
+    document.getElementById('btn-logout').addEventListener('click', logout);
+    loadDashboard();
+  } else {
+    el.viewDashboard.classList.add('hidden');
+    el.viewPublic.classList.remove('hidden');
+    el.nav.innerHTML = '';
+  }
+});
+
+// Affiche un message après le retour de la connexion TikTok (succès ou échec)
+const tiktokParam = new URLSearchParams(window.location.search).get('tiktok');
+if (tiktokParam === 'success') {
+  alert('Compte TikTok connecté avec succès !');
+  window.history.replaceState({}, '', window.location.pathname);
+} else if (tiktokParam === 'error') {
+  alert('La connexion TikTok a échoué. Réessaie.');
+  window.history.replaceState({}, '', window.location.pathname);
 }
 
 loadPlans();
