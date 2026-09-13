@@ -22,6 +22,7 @@ const CONTENT_TYPE_LABELS = {
   verification_publication: 'Vérification avant publication',
   analyse_video: 'Analyse de vidéo TikTok',
   generate_from_success: 'Nouveau script inspiré d\'un succès',
+  repurpose_content: 'Adaptation multicanal',
 };
 
 // Retient l'id de l'analyse TikTok (tiktok_analyses) associée à chaque
@@ -214,6 +215,7 @@ async function loadDashboard() {
   ensureSponsorshipUI();
   ensurePersonaSectionUI();
   ensurePersonaDropdownUI();
+  ensureRepliesUI();
   showHomeScreen();
   await loadRequests(authHeaders);
   await loadSponsorships();
@@ -790,6 +792,24 @@ function renderConversationThread() {
       });
     });
   }
+
+  // Boutons "recyclage multicanal" sous n'importe quel script terminé :
+  // permet d'adapter nativement ce contenu à d'autres plateformes, sans
+  // repartir de zéro.
+  if (lastTurn.status === 'completed' && lastTurn.response) {
+    const repurposeHtml = `
+      <div class="chat-turn" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="secondary btn-repurpose" data-script-id="${lastTurn.id}" data-platform="Twitter_Thread">🔁 Adapter en Thread Twitter</button>
+        <button class="secondary btn-repurpose" data-script-id="${lastTurn.id}" data-platform="LinkedIn_Post">🔁 Adapter en Post LinkedIn</button>
+      </div>
+    `;
+    el.conversationThread.insertAdjacentHTML('beforeend', repurposeHtml);
+    el.conversationThread.querySelectorAll('.btn-repurpose').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        repurposeContent(btn.dataset.scriptId, btn.dataset.platform);
+      });
+    });
+  }
 }
 
 // Envoie une requête POST en streaming vers n'importe quelle route du
@@ -905,6 +925,48 @@ async function generateFromSuccess(analysisId, action, displayPrompt) {
     await streamFromEndpoint(
       '/api/generate-from-success',
       { analysis_id: analysisId, action, conversation_id: newConversationId },
+      (chunkText) => {
+        previewEl.textContent += chunkText;
+      }
+    );
+
+    const { data: { session: freshSession } } = await supabaseClient.auth.getSession();
+    await loadRequests({ Authorization: `Bearer ${freshSession.access_token}` });
+  } catch (err) {
+    showHomeScreen();
+    showMessage(el.aiRequestMessage, friendlyErrorMessage(err), 'error');
+  }
+}
+
+const REPURPOSE_PLATFORM_LABELS = {
+  Twitter_Thread: 'Thread Twitter/X',
+  LinkedIn_Post: 'Post LinkedIn',
+};
+
+// Déclenché par un des boutons "🔁 Adapter en ..." sous un script terminé :
+// adapte nativement ce script à la plateforme choisie, en conservant son
+// ton d'origine.
+async function repurposeContent(scriptId, platform) {
+  clearMessage(el.aiRequestMessage);
+  const newConversationId = crypto.randomUUID();
+  const displayPrompt = `Adapter ce script pour : ${REPURPOSE_PLATFORM_LABELS[platform] || platform}`;
+
+  selectedConversationId = newConversationId;
+  el.homeScreen.classList.add('hidden');
+  el.conversationView.classList.remove('hidden');
+  el.formReply.classList.add('hidden');
+  el.conversationThread.innerHTML = `
+    <div class="chat-turn">
+      <div class="chat-prompt">${displayPrompt}</div>
+      <div class="ai-response" id="streaming-preview"></div>
+    </div>
+  `;
+  const previewEl = document.getElementById('streaming-preview');
+
+  try {
+    await streamFromEndpoint(
+      '/api/repurpose-content',
+      { script_id: scriptId, platform, conversation_id: newConversationId },
       (chunkText) => {
         previewEl.textContent += chunkText;
       }
@@ -1390,6 +1452,7 @@ async function loadPersonas() {
     allPersonas = await res.json();
     renderPersonaList();
     renderPersonaDropdownOptions();
+    renderRepliesPersonaOptions();
   } catch (err) {
     const listEl = document.getElementById('persona-list');
     if (listEl) listEl.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
@@ -1528,6 +1591,132 @@ async function extractPersonaFromScript() {
     btn.disabled = false;
     btn.textContent = original;
   }
+}
+
+// --------------------- Réponses intelligentes aux commentaires ---------------------
+// IMPORTANT : l'API publique de TikTok (celle utilisée pour connecter le
+// compte dans cette app) ne permet ni de récupérer automatiquement les
+// commentaires d'une vidéo, ni d'y répondre automatiquement — ces accès
+// sont réservés à des partenariats business spécifiques, pas aux apps
+// tierces classiques comme celle-ci. Le fonctionnement est donc : tu colles
+// toi-même les commentaires (copiés depuis l'app TikTok), l'IA propose une
+// réponse pour chacun, et tu la copies pour la coller toi-même sur TikTok
+// (un lien "Ouvrir la vidéo" t'y emmène directement).
+
+function ensureRepliesUI() {
+  if (document.getElementById('replies-section')) return; // déjà injecté
+
+  const section = document.createElement('div');
+  section.id = 'replies-section';
+  section.className = 'card';
+  section.style.marginTop = '20px';
+  section.innerHTML = `
+    <h3 style="margin-top:0;">💬 Réponses intelligentes aux commentaires</h3>
+    <p class="muted" style="margin-top:0;">
+      Colle les commentaires reçus sous une de tes vidéos TikTok (un par ligne), choisis une voix, et l'IA rédige
+      une proposition de réponse pour chacun — à toi de la valider ou de la modifier avant de la publier toi-même sur TikTok.
+    </p>
+    <input id="replies-video-url" placeholder="Lien de la vidéo TikTok (optionnel, pour l'ouvrir directement)" style="width:100%;margin-bottom:8px;" />
+    <label style="display:block;font-size:13px;margin-bottom:4px;">Voix / Personnage à utiliser</label>
+    <select id="replies-persona-select" style="width:100%;margin-bottom:8px;">
+      <option value="">Standard (par défaut)</option>
+    </select>
+    <textarea id="replies-comments" rows="6" placeholder="Colle les commentaires ici, un par ligne..." style="width:100%;"></textarea>
+    <button id="btn-generate-replies" style="margin-top:8px;">Générer les réponses</button>
+    <div id="replies-message"></div>
+    <div id="replies-results" style="margin-top:12px;display:grid;gap:8px;"></div>
+  `;
+
+  el.homeScreen.appendChild(section);
+  document.getElementById('btn-generate-replies').addEventListener('click', generateReplies);
+}
+
+function renderRepliesPersonaOptions() {
+  const select = document.getElementById('replies-persona-select');
+  if (!select) return;
+  const currentValue = select.value;
+  select.innerHTML =
+    '<option value="">Standard (par défaut)</option>' +
+    allPersonas.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  select.value = currentValue || '';
+}
+
+async function generateReplies() {
+  const messageEl = document.getElementById('replies-message');
+  const resultsEl = document.getElementById('replies-results');
+  clearMessage(messageEl);
+  resultsEl.innerHTML = '';
+
+  const rawComments = document.getElementById('replies-comments').value;
+  const comments = rawComments
+    .split('\n')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const persona_id = document.getElementById('replies-persona-select').value || undefined;
+  const videoUrl = document.getElementById('replies-video-url').value.trim();
+
+  if (!comments.length) {
+    showMessage(messageEl, 'Colle au moins un commentaire.', 'error');
+    return;
+  }
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  const btn = document.getElementById('btn-generate-replies');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Génération en cours...';
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/generate-replies`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ comments, persona_id }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors de la génération.');
+
+    renderReplyResults(data.replies || [], videoUrl);
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+function renderReplyResults(replies, videoUrl) {
+  const resultsEl = document.getElementById('replies-results');
+  if (!replies.length) {
+    resultsEl.innerHTML = '<p class="muted">Aucune réponse générée.</p>';
+    return;
+  }
+
+  resultsEl.innerHTML = replies
+    .map(
+      (r, i) => `
+      <div class="card" style="background:rgba(255,255,255,0.03);padding:10px;font-size:13px;">
+        <p class="muted" style="margin:0 0 6px;">💬 ${escapeHtml(r.comment)}</p>
+        <textarea class="reply-text-input" data-index="${i}" rows="2" style="width:100%;">${escapeHtml(r.reply)}</textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+          <button class="secondary btn-copy-reply" data-index="${i}" style="font-size:12px;">📋 Copier la réponse</button>
+          ${videoUrl ? `<a href="${videoUrl}" target="_blank" rel="noopener" class="secondary" style="font-size:12px;text-decoration:none;display:inline-block;padding:6px 10px;border-radius:6px;">🔗 Ouvrir la vidéo sur TikTok</a>` : ''}
+        </div>
+      </div>
+    `
+    )
+    .join('');
+
+  resultsEl.querySelectorAll('.btn-copy-reply').forEach((copyBtn) => {
+    copyBtn.addEventListener('click', () => {
+      const textarea = resultsEl.querySelector(`.reply-text-input[data-index="${copyBtn.dataset.index}"]`);
+      navigator.clipboard.writeText(textarea.value);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = '✅ Copié !';
+      setTimeout(() => { copyBtn.textContent = original; }, 1500);
+    });
+  });
 }
 
 loadPlans();
