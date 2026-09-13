@@ -205,6 +205,8 @@ async function loadDashboard() {
   ensureRepliesUI();
   await loadSponsorships();
   await loadPersonas();
+  await refreshCreditsBadge();
+  await loadReferralInfo();
 }
 
 // --------------------- Storyboard automatique ---------------------
@@ -289,12 +291,53 @@ async function generateStoryboard() {
 
     lastStoryboardScenes = data.scenes || [];
     renderStoryboard(lastStoryboardScenes);
+    refreshCreditsBadge();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Générer le storyboard';
   }
+}
+
+// Bloc "génération vidéo" affiché sous chaque scène : son contenu dépend
+// de scene.video_status (renvoyé par le backend, persisté en base — voir
+// storyboard_scenes). Nécessite que la scène ait été enregistrée (elle a
+// un `id`) : si l'enregistrement a échoué côté serveur, on l'indique au
+// lieu d'afficher un bouton qui ne pourrait pas fonctionner.
+function sceneVideoBlockHtml(s) {
+  if (!s.id) {
+    return `<p class="muted" style="font-size:11px;margin-top:8px;">Génération vidéo indisponible pour cette scène (non enregistrée).</p>`;
+  }
+
+  const status = s.video_status || 'none';
+
+  if (status === 'completed' && s.video_url) {
+    return `
+      <video src="${s.video_url}" controls style="width:100%;max-width:220px;border-radius:8px;margin-top:8px;display:block;"></video>
+    `;
+  }
+  if (status === 'processing' || status === 'pending') {
+    return `
+      <div class="scene-video-block" data-scene-id="${s.id}" style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px;" class="muted">
+        <span class="spinner" aria-hidden="true"></span> Génération vidéo en cours (Luma peut prendre quelques minutes)...
+      </div>
+    `;
+  }
+  if (status === 'failed') {
+    return `
+      <div class="scene-video-block" data-scene-id="${s.id}" style="margin-top:8px;">
+        <p class="message error" style="margin:0 0 6px;">${escapeHtml(s.video_error || 'La génération vidéo a échoué.')} (crédits remboursés)</p>
+        <button class="secondary btn-generate-scene-video" data-scene-id="${s.id}" style="font-size:12px;">🎬 Réessayer (20 crédits)</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="scene-video-block" data-scene-id="${s.id}" style="margin-top:8px;">
+      <button class="secondary btn-generate-scene-video" data-scene-id="${s.id}" style="font-size:12px;">🎬 Générer la vidéo (20 crédits)</button>
+    </div>
+  `;
 }
 
 function renderStoryboard(scenes) {
@@ -319,6 +362,8 @@ function renderStoryboard(scenes) {
         <p style="margin:12px 0 4px;font-size:13px;"><strong>Prompt visuel (pour le générateur vidéo) :</strong></p>
         <p style="margin:0 0 8px;white-space:pre-wrap;font-family:monospace;font-size:12px;background:rgba(0,0,0,0.2);padding:8px;border-radius:6px;">${escapeHtml(s.visual_prompt)}</p>
         <button class="secondary btn-copy-prompt" data-index="${i}" style="font-size:12px;">📋 Copier le prompt visuel</button>
+
+        ${sceneVideoBlockHtml(s)}
       </div>
     `
     )
@@ -343,6 +388,94 @@ function renderStoryboard(scenes) {
       setTimeout(() => { copyBtn.textContent = original; }, 1500);
     });
   });
+
+  resultsEl.querySelectorAll('.btn-generate-scene-video').forEach((btn) => {
+    btn.addEventListener('click', () => generateSceneVideo(btn.dataset.sceneId));
+  });
+}
+
+// Lance la génération vidéo d'une scène (déduit 20 crédits côté backend
+// AVANT d'appeler le fournisseur), puis interroge régulièrement le statut
+// jusqu'à ce que le fichier soit prêt (ou ait échoué), pour remplacer le
+// bouton par un lecteur vidéo sans que l'utilisateur ait à recharger la page.
+async function generateSceneVideo(sceneId) {
+  const block = document.querySelector(`.scene-video-block[data-scene-id="${sceneId}"]`);
+  if (block) {
+    block.outerHTML = `
+      <div class="scene-video-block" data-scene-id="${sceneId}" style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px;" class="muted">
+        <span class="spinner" aria-hidden="true"></span> Envoi de la demande...
+      </div>
+    `;
+  }
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/generate-video`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ scene_id: sceneId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur lors du lancement de la génération vidéo.');
+
+    refreshCreditsBadge();
+    const newBlock = document.querySelector(`.scene-video-block[data-scene-id="${sceneId}"]`);
+    if (newBlock) {
+      newBlock.innerHTML = `<span class="spinner" aria-hidden="true"></span> Génération vidéo en cours (peut prendre quelques minutes)...`;
+    }
+    pollSceneVideoStatus(sceneId);
+  } catch (err) {
+    const failBlock = document.querySelector(`.scene-video-block[data-scene-id="${sceneId}"]`);
+    if (failBlock) {
+      failBlock.innerHTML = `
+        <p class="message error" style="margin:0 0 6px;">${friendlyErrorMessage(err)}</p>
+        <button class="secondary btn-generate-scene-video" data-scene-id="${sceneId}" style="font-size:12px;">🎬 Réessayer (20 crédits)</button>
+      `;
+      failBlock.querySelector('.btn-generate-scene-video')?.addEventListener('click', () => generateSceneVideo(sceneId));
+    }
+    refreshCreditsBadge();
+  }
+}
+
+async function pollSceneVideoStatus(sceneId) {
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  const check = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/generate-video/${sceneId}/status`, { headers });
+      if (!res.ok) return; // on retentera au prochain passage plutôt que d'abandonner sur une erreur réseau isolée
+      const scene = await res.json();
+      const block = document.querySelector(`.scene-video-block[data-scene-id="${sceneId}"]`);
+
+      if (scene.video_status === 'completed' && scene.video_url) {
+        if (block) {
+          block.outerHTML = `<video src="${scene.video_url}" controls style="width:100%;max-width:220px;border-radius:8px;margin-top:8px;display:block;"></video>`;
+        }
+        return; // terminé, on arrête le polling
+      }
+      if (scene.video_status === 'failed') {
+        if (block) {
+          block.innerHTML = `
+            <p class="message error" style="margin:0 0 6px;">${escapeHtml(scene.video_error || 'La génération vidéo a échoué.')} (crédits remboursés)</p>
+            <button class="secondary btn-generate-scene-video" data-scene-id="${sceneId}" style="font-size:12px;">🎬 Réessayer (20 crédits)</button>
+          `;
+          block.querySelector('.btn-generate-scene-video')?.addEventListener('click', () => generateSceneVideo(sceneId));
+        }
+        refreshCreditsBadge();
+        return; // terminé, on arrête le polling
+      }
+
+      // Toujours en cours : on revérifie dans 5 secondes.
+      setTimeout(check, 5000);
+    } catch (_err) {
+      setTimeout(check, 5000);
+    }
+  };
+
+  setTimeout(check, 5000);
 }
 
 async function loadCreatorProfile(authHeaders) {
@@ -667,6 +800,7 @@ async function runGeneration(request_type, prompt, extra = {}) {
 
     contentEl.innerHTML = renderAiResponse(fullText);
     renderResultActions({ requestType: request_type, analysisId, requestId, response: fullText });
+    refreshCreditsBadge();
     return true;
   } catch (err) {
     contentEl.innerHTML = `<div class="message error">${friendlyErrorMessage(err)}</div>`;
@@ -692,6 +826,7 @@ async function runGenerateFromSuccess(analysisId, action, displayPrompt) {
 
     contentEl.innerHTML = renderAiResponse(fullText);
     renderResultActions({ requestType: 'generate_from_success', requestId, response: fullText });
+    refreshCreditsBadge();
   } catch (err) {
     contentEl.innerHTML = `<div class="message error">${friendlyErrorMessage(err)}</div>`;
   }
@@ -721,6 +856,7 @@ async function runRepurpose(scriptId, platform) {
 
     contentEl.innerHTML = renderAiResponse(fullText);
     renderResultActions({ requestType: 'repurpose_content', requestId, response: fullText });
+    refreshCreditsBadge();
   } catch (err) {
     contentEl.innerHTML = `<div class="message error">${friendlyErrorMessage(err)}</div>`;
   }
@@ -1208,6 +1344,7 @@ async function generateSponsorPitch(id, btn) {
     if (!res.ok) throw new Error(data.error || 'Erreur lors de la génération du pitch.');
 
     showSponsorPitchModal(data.pitch);
+    refreshCreditsBadge();
   } catch (err) {
     alert(friendlyErrorMessage(err));
   } finally {
@@ -1429,6 +1566,7 @@ async function extractPersonaFromScript() {
     document.getElementById('persona-instructions').value = persona.custom_instructions || '';
 
     showMessage(messageEl, 'Persona extrait ! Vérifie les champs ci-dessous puis clique sur "Enregistrer ce persona".', 'success');
+    refreshCreditsBadge();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
   } finally {
@@ -1522,6 +1660,7 @@ async function generateReplies() {
     if (!res.ok) throw new Error(data.error || 'Erreur lors de la génération.');
 
     renderReplyResults(data.replies || [], videoUrl);
+    refreshCreditsBadge();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
   } finally {
@@ -1571,6 +1710,7 @@ supabaseClient.auth.onAuthStateChange((_event, session) => {
     el.viewDashboard.classList.remove('hidden');
     el.nav.innerHTML = `
       <span class="muted">${session.user.email}</span>
+      <span id="credits-badge" class="muted" style="font-weight:600;">💎 ...</span>
       <button class="secondary" id="btn-open-profile-nav">⚙️ Profil</button>
       <button class="secondary" id="btn-logout">Se déconnecter</button>
     `;
@@ -1579,12 +1719,111 @@ supabaseClient.auth.onAuthStateChange((_event, session) => {
     });
     document.getElementById('btn-logout').addEventListener('click', logout);
     loadDashboard();
+    claimPendingReferralIfAny();
   } else {
     el.viewDashboard.classList.add('hidden');
     el.viewPublic.classList.remove('hidden');
     el.nav.innerHTML = '';
   }
 });
+
+// --------------------- Crédits (solde + parrainage) ---------------------
+// Le solde de crédits protège le budget IA : chaque génération de script,
+// storyboard, persona, pitch de sponsoring ou vidéo en déduit un certain
+// nombre côté backend AVANT d'appeler l'API payante correspondante. Ici,
+// côté frontend, on se contente d'afficher le solde et de le rafraîchir
+// après chaque action qui pourrait l'avoir changé.
+
+async function refreshCreditsBadge() {
+  const badge = document.getElementById('credits-badge');
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/credits/balance`, { headers });
+    if (!res.ok) throw new Error();
+    const { credits_balance } = await res.json();
+    if (badge) badge.textContent = `💎 ${credits_balance} crédits`;
+  } catch (_err) {
+    if (badge) badge.textContent = '💎 —';
+  }
+}
+
+async function loadReferralInfo() {
+  const contentEl = document.getElementById('referral-content');
+  if (!contentEl) return;
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/credits/referral-info`, { headers });
+    if (!res.ok) throw new Error('Erreur de chargement.');
+    const { referral_code, referred_count } = await res.json();
+
+    const referralLink = `${window.location.origin}/?ref=${referral_code}`;
+    contentEl.innerHTML = `
+      <p style="font-size:12px;margin:0 0 6px;">Ton lien de parrainage :</p>
+      <div style="display:flex;gap:6px;">
+        <input id="referral-link-input" readonly value="${referralLink}" style="flex:1;font-size:11px;" />
+        <button id="btn-copy-referral-link" class="secondary" style="font-size:12px;white-space:nowrap;">📋 Copier</button>
+      </div>
+      <p class="muted" style="font-size:11px;margin-top:8px;">${referred_count} ami${referred_count > 1 ? 's' : ''} déjà parrainé${referred_count > 1 ? 's' : ''}.</p>
+    `;
+    document.getElementById('btn-copy-referral-link').addEventListener('click', () => {
+      navigator.clipboard.writeText(referralLink);
+      const btn = document.getElementById('btn-copy-referral-link');
+      const original = btn.textContent;
+      btn.textContent = '✅ Copié !';
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+  } catch (err) {
+    contentEl.innerHTML = `<p class="muted" style="font-size:12px;">Erreur : ${friendlyErrorMessage(err)}</p>`;
+  }
+}
+
+// Capture le code ?ref=XXXX présent dans l'URL au premier chargement de la
+// page (visiteur non encore inscrit) et le garde en mémoire locale, pour
+// pouvoir le valider une fois que ce visiteur aura créé son compte et sera
+// connecté — même si une confirmation par email fait recharger la page
+// entre-temps.
+const refParam = new URLSearchParams(window.location.search).get('ref');
+if (refParam) {
+  try { localStorage.setItem('pending_referral_code', refParam); } catch (_err) { /* ignorer */ }
+}
+
+async function claimPendingReferralIfAny() {
+  let code = null;
+  try { code = localStorage.getItem('pending_referral_code'); } catch (_err) { code = null; }
+  if (!code) return;
+
+  // On ne tente qu'une seule fois : qu'il s'agisse d'un succès ou d'une
+  // erreur (compte déjà parrainé, code invalide...), on efface le code
+  // pour ne pas retenter à chaque connexion.
+  try { localStorage.removeItem('pending_referral_code'); } catch (_err) { /* ignorer */ }
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/claim-referral`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ referral_code: code }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`🎉 Parrainage validé : +${data.credits_granted} crédits pour toi !`);
+      refreshCreditsBadge();
+      loadReferralInfo();
+    }
+    // En cas d'erreur (déjà parrainé, code invalide, auto-parrainage), on
+    // reste silencieux : ce n'est pas une action volontaire de
+    // l'utilisateur à cet instant, pas la peine de l'interrompre.
+  } catch (_err) {
+    // Idem : échec silencieux.
+  }
+}
 
 // Affiche un message après le retour de la connexion TikTok (succès ou échec)
 const tiktokParam = new URLSearchParams(window.location.search).get('tiktok');
