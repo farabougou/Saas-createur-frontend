@@ -146,6 +146,71 @@ async function subscribeToPlan(planId) {
   }
 }
 
+// --------------------- Abonnement (accessible depuis le tableau de bord) ---------------------
+// La grille "Nos offres" du haut de page n'est visible que lorsqu'on est
+// déconnecté (#view-public est masqué dès qu'une session existe). Cette
+// section réaffiche les mêmes offres payantes, avec le même bouton
+// "S'abonner", mais directement dans le tableau de bord (#view-dashboard),
+// pour qu'un utilisateur déjà connecté puisse s'abonner sans se déconnecter.
+
+async function ensureSubscriptionUI() {
+  if (document.getElementById('subscription-section')) {
+    await loadSubscriptionPlans();
+    return;
+  }
+
+  const section = document.createElement('div');
+  section.id = 'subscription-section';
+  section.className = 'card';
+  section.style.marginTop = '20px';
+  section.innerHTML = `
+    <h3 style="margin-top:0;">💳 Mon abonnement</h3>
+    <p class="muted" style="margin-top:0;">Choisis une offre pour augmenter ton quota de requêtes IA.</p>
+    <div id="subscription-plans-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px;">
+      <p class="muted">Chargement des offres...</p>
+    </div>
+  `;
+
+  el.extraTools.appendChild(section);
+  await loadSubscriptionPlans();
+}
+
+async function loadSubscriptionPlans() {
+  const gridEl = document.getElementById('subscription-plans-grid');
+  if (!gridEl) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/plans`);
+    if (!res.ok) throw new Error('Impossible de charger les offres.');
+    const plans = await res.json();
+
+    const paidPlans = plans.filter((p) => p.price_cents > 0);
+    if (!paidPlans.length) {
+      gridEl.innerHTML = '<p class="muted">Aucune offre payante disponible pour le moment.</p>';
+      return;
+    }
+
+    gridEl.innerHTML = paidPlans
+      .map(
+        (plan) => `
+        <div class="card" style="background:rgba(255,255,255,0.03);">
+          <h4 style="margin:0 0 6px;">${plan.name}</h4>
+          <div class="plan-price">${formatPrice(plan)} <span>/ mois</span></div>
+          <p class="muted" style="font-size:12px;">${plan.monthly_request_quota} requêtes IA / mois</p>
+          <button class="btn-subscribe-dashboard" data-plan-id="${plan.id}" style="margin-top:8px;width:100%;">S'abonner</button>
+        </div>
+      `
+      )
+      .join('');
+
+    gridEl.querySelectorAll('.btn-subscribe-dashboard').forEach((btn) => {
+      btn.addEventListener('click', () => subscribeToPlan(btn.dataset.planId));
+    });
+  } catch (err) {
+    gridEl.innerHTML = `<p class="muted">Erreur de chargement des offres (${friendlyErrorMessage(err)})</p>`;
+  }
+}
+
 el.tabLogin.addEventListener('click', () => {
   el.tabLogin.classList.add('active');
   el.tabSignup.classList.remove('active');
@@ -302,6 +367,7 @@ async function loadDashboard() {
   ensurePersonaSectionUI();
   ensurePersonaDropdownUI();
   ensureRepliesUI();
+  ensureSubscriptionUI();
   await loadSponsorships();
   await loadPersonas();
   await refreshCreditsBadge();
