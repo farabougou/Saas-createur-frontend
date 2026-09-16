@@ -77,7 +77,15 @@ const el = {
 
 function formatPrice(plan) {
   if (plan.price_cents === 0) return 'Gratuit';
-  return `${plan.price_cents} ${plan.currency}`;
+  // XOF (franc CFA) n'a pas de centimes : on affiche le montant tel quel.
+  if (plan.currency === 'XOF') {
+    return `${plan.price_cents} FCFA`;
+  }
+  // Les autres devises (EUR...) utilisent des centimes : on convertit et on
+  // affiche avec une virgule, à la française (ex : 999 -> "9,99 €").
+  const amount = (plan.price_cents / 100).toFixed(2).replace('.', ',');
+  const symbol = plan.currency === 'EUR' ? '€' : plan.currency;
+  return `${amount} ${symbol}`;
 }
 
 function showMessage(container, text, type = 'error') {
