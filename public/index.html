@@ -117,6 +117,14 @@
 
     <!-- ======================= VUE TABLEAU DE BORD (connecté) ======================= -->
     <div id="view-dashboard" class="hidden">
+      <!-- Barre de navigation du bas : visible uniquement sur téléphone (voir mobile.js et style.css) -->
+      <nav id="bottom-nav" class="bottom-nav" aria-label="Navigation principale">
+        <button type="button" data-nav="top"><span>🏠</span>Accueil</button>
+        <button type="button" data-nav="create"><span>✍️</span>Créer</button>
+        <button type="button" data-nav="tools"><span>🛠️</span>Outils</button>
+        <button type="button" data-nav="quotes"><span>🧾</span>Devis</button>
+        <button type="button" data-nav="account"><span>👤</span>Compte</button>
+      </nav>
       <main class="main-panel">
         <!-- ----------------------- BENTO GRID PRINCIPAL ----------------------- -->
         <div class="bento-grid">
@@ -280,6 +288,7 @@
   <script src="config.js"></script>
   <script src="quotes.js"></script>
   <script src="app.js"></script>
+  <script src="mobile.js"></script>
   <script>
     // Boutons "Créer mon compte gratuit" de la page d'accueil : on ouvre l'onglet
     // d'inscription et on fait défiler jusqu'au formulaire.
