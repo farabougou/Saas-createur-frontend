@@ -62,6 +62,17 @@ function phoneToWhatsappNumber(phone) {
   return digits.length >= 8 && digits.length <= 15 ? digits : null;
 }
 
+// Petite pastille de statut. "payé" est mis à jour automatiquement par le
+// backend (webhook Stripe) quand le client règle son devis.
+function quoteStatusBadge(status) {
+  const styles = {
+    'payé': { label: 'Payé ✓', bg: 'rgba(34,197,94,0.18)', color: '#4ade80' },
+    'brouillon': { label: 'À payer', bg: 'rgba(148,163,184,0.18)', color: '#cbd5e1' },
+  };
+  const s = styles[status] || { label: status || '—', bg: 'rgba(148,163,184,0.18)', color: '#cbd5e1' };
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${s.bg};color:${s.color};">${escapeHtml(s.label)}</span>`;
+}
+
 function ensureQuotesUI() {
   if (document.getElementById('quotes-section')) return; // déjà injecté
 
@@ -98,6 +109,12 @@ function ensureQuotesUI() {
   document.getElementById('btn-create-quote').addEventListener('click', createQuote);
   document.getElementById('btn-save-issuer').addEventListener('click', saveIssuerName);
   prefillIssuerName();
+
+  // Quand on revient sur l'onglet (par exemple après avoir payé le devis de
+  // test sur la page Stripe), on recharge la liste pour voir le nouveau statut.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadQuotes();
+  });
 
   // Un seul écouteur pour tous les boutons de la liste (la liste est
   // redessinée à chaque changement).
@@ -180,6 +197,7 @@ function renderQuotes() {
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid rgba(255,255,255,0.12);">
           <div style="flex:1;min-width:180px;">
             <strong>${escapeHtml(q.client_name)}</strong>
+            ${quoteStatusBadge(q.status)}
             <span class="muted" style="font-size:12px;">${quoteNumber(q)} · ${date}</span>
             <div class="muted" style="font-size:13px;">${escapeHtml(desc)}</div>
           </div>
