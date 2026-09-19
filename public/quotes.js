@@ -86,7 +86,7 @@ function ensureQuotesUI() {
   section.innerHTML = `
     <h3 style="margin-top:0;">🧾 Devis &amp; paiement</h3>
     <p class="muted" style="margin-top:0;">
-      Créez un devis avec un lien de paiement par carte (Stripe) et, si vous le souhaitez, votre numéro mobile money, puis envoyez-le en PDF à votre client par WhatsApp.
+      Créez un devis, puis envoyez-le en PDF à votre client par WhatsApp : il pourra vous régler par mobile money (Orange Money, Moov Money) avec le numéro enregistré ci-dessous, et par carte si cette option est activée sur votre compte.
     </p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;">
       <span class="muted" style="font-size:13px;">Nom affiché sur vos devis :</span>
@@ -99,7 +99,7 @@ function ensureQuotesUI() {
       <button class="secondary" id="btn-save-mobile-money">Enregistrer</button>
     </div>
     <p class="muted" style="margin:0 0 12px;font-size:12px;">
-      Facultatif. Il apparaît sur le PDF et dans le message WhatsApp pour que votre client puisse payer par Orange Money ou Moov Money. Videz le champ puis enregistrez pour le retirer.
+      Indispensable pour créer des devis. Il apparaît sur le PDF et dans le message WhatsApp pour que votre client puisse payer par Orange Money ou Moov Money. Videz le champ puis enregistrez pour le retirer.
     </p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:12px 0;">
       <input id="quote-client-name" placeholder="Nom du client" />
