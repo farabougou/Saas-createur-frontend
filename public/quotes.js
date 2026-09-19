@@ -65,10 +65,12 @@ function phoneToWhatsappNumber(phone) {
 // Petite pastille de statut. "payé" est mis à jour automatiquement par le
 // backend (webhook Stripe) quand le client règle par carte ; pour un paiement
 // par mobile money, c'est le créateur qui clique sur "Payé" dans la liste.
+// "envoyé" s'affiche dès que le devis a été partagé par WhatsApp.
 function quoteStatusBadge(status) {
   const styles = {
     'payé': { label: 'Payé ✓', bg: 'rgba(34,197,94,0.18)', color: '#4ade80' },
     'brouillon': { label: 'À payer', bg: 'rgba(148,163,184,0.18)', color: '#cbd5e1' },
+    'envoyé': { label: 'Envoyé', bg: 'rgba(59,130,246,0.18)', color: '#93c5fd' },
   };
   const s = styles[status] || { label: status || '—', bg: 'rgba(148,163,184,0.18)', color: '#cbd5e1' };
   return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${s.bg};color:${s.color};">${escapeHtml(s.label)}</span>`;
@@ -136,6 +138,7 @@ function ensureQuotesUI() {
     if (btn.dataset.quoteAction === 'pdf') downloadQuotePdf(quote, btn);
     if (btn.dataset.quoteAction === 'whatsapp') sendQuoteViaWhatsapp(quote, btn);
     if (btn.dataset.quoteAction === 'mark-paid') markQuoteAsPaid(quote, btn);
+    if (btn.dataset.quoteAction === 'delete') deleteQuote(quote, btn);
   });
 }
 
@@ -240,6 +243,43 @@ async function markQuoteAsPaid(quote, btn) {
   }
 }
 
+// Le devis vient d'être partagé par WhatsApp : on le passe à "envoyé".
+// Silencieux en cas d'échec : ce n'est qu'une information de suivi.
+async function markQuoteSent(quoteId) {
+  try {
+    const headers = await authHeadersOrNull();
+    if (!headers) return;
+    await fetch(`${API_BASE_URL}/api/quotes/${quoteId}/mark-sent`, { method: 'POST', headers });
+    await loadQuotes();
+  } catch {
+    // pas grave
+  }
+}
+
+// Supprime un devis non payé (le backend désactive aussi son lien Stripe).
+async function deleteQuote(quote, btn) {
+  const messageEl = document.getElementById('quotes-message');
+  clearMessage(messageEl);
+
+  if (!window.confirm(`Supprimer le devis ${quoteNumber(quote)} de ${quote.client_name} ? Son lien de paiement sera désactivé et le client ne pourra plus payer.`)) return;
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/quotes/${quote.id}`, { method: 'DELETE', headers });
+    let data = {};
+    try { data = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(data.error || 'Impossible de supprimer le devis.');
+    showMessage(messageEl, `Devis ${quoteNumber(quote)} supprimé.`, 'success');
+    await loadQuotes();
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+    btn.disabled = false;
+  }
+}
+
 async function loadQuotes() {
   const headers = await authHeadersOrNull();
   if (!headers) return;
@@ -280,6 +320,7 @@ function renderQuotes() {
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${q.status === 'payé' ? '' : `<button class="secondary" data-quote-action="mark-paid" data-quote-id="${escapeHtml(String(q.id))}">✅ Payé</button>`}
             <button class="secondary" data-quote-action="pdf" data-quote-id="${escapeHtml(String(q.id))}">📄 PDF</button>
+            ${q.status === 'payé' ? '' : `<button class="secondary" data-quote-action="delete" data-quote-id="${escapeHtml(String(q.id))}" title="Supprimer ce devis">🗑</button>`}
             <button data-quote-action="whatsapp" data-quote-id="${escapeHtml(String(q.id))}">💬 WhatsApp</button>
           </div>
         </div>`;
@@ -426,6 +467,7 @@ async function sendQuoteViaWhatsapp(quote, btn) {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], text, title: `Devis ${quoteNumber(quote)}` });
+        await markQuoteSent(quote.id);
         return;
       } catch (err) {
         if (err && err.name === 'AbortError') return; // l'utilisateur a fermé le menu : rien à faire
@@ -438,7 +480,7 @@ async function sendQuoteViaWhatsapp(quote, btn) {
     const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`;
     showMessage(
       messageEl,
-      `Le PDF a été téléchargé. <a href="${waUrl}" target="_blank" rel="noopener">Ouvrir WhatsApp avec le message →</a> puis joins le fichier ${quoteNumber(quote)}.pdf dans la conversation.`,
+      `Le PDF a été téléchargé. <a href="${waUrl}" target="_blank" rel="noopener" onclick="markQuoteSent('${escapeHtml(String(quote.id))}')">Ouvrir WhatsApp avec le message →</a> puis joins le fichier ${quoteNumber(quote)}.pdf dans la conversation.`,
       'success'
     );
   } catch (err) {
