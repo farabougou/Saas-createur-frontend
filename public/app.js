@@ -1857,7 +1857,7 @@ supabaseClient.auth.onAuthStateChange((_event, session) => {
     el.viewPublic.classList.add('hidden');
     el.viewDashboard.classList.remove('hidden');
     el.nav.innerHTML = `
-      <span class="muted">${session.user.email}</span>
+      <span class="muted nav-email">${session.user.email}</span>
       <span id="credits-badge" class="muted" style="font-weight:600;">💎 ...</span>
       <button class="secondary" id="btn-open-profile-nav">⚙️ Profil</button>
       <button class="secondary" id="btn-logout">Se déconnecter</button>

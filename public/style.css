@@ -608,3 +608,112 @@ footer a {
     padding-top: 8px;
   }
 }
+
+/* ===================== Mobile (téléphones) ===================== */
+button, a {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+#nav:empty {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .wrap {
+    padding: 12px;
+  }
+
+  /* Champs à 16 px minimum : en dessous, l'iPhone zoome tout seul sur le champ. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+    padding: 11px 12px;
+  }
+  button {
+    min-height: 44px;
+  }
+  button.icon-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  button.btn-analyse-video {
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  /* En-tête compacte : le solde de crédits passe avant l'e-mail. */
+  .top-header {
+    padding: 4px 0 14px;
+    gap: 8px;
+  }
+  #nav {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  #nav .nav-email {
+    display: none;
+  }
+  #nav button {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  #credits-badge {
+    font-size: 16px;
+  }
+
+  /* Tableau de bord : tuiles plus serrées, sans grand vide en dessous. */
+  .bento-grid {
+    grid-auto-rows: auto;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .bento-tile {
+    padding: 14px;
+    border-radius: 16px;
+  }
+  .card {
+    padding: 14px;
+  }
+  .quick-action-btn {
+    padding: 14px;
+  }
+  #tiktok-card > div:first-child {
+    flex-wrap: wrap;
+  }
+  #tiktok-card #btn-disconnect-tiktok {
+    width: 100%;
+  }
+
+  /* Outils avancés : textes d'introduction plus discrets. */
+  #extra-tools p.muted {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  #sponsor-brand-name,
+  #sponsor-contact-email {
+    flex: 1 1 100% !important;
+  }
+
+  /* Fenêtres : elles montent du bas de l'écran, comme sur une application. */
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    max-width: none;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-radius: 18px 18px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  /* Page d'accueil : boutons d'action pleine largeur, faciles à toucher. */
+  .lp-cta-row .lp-btn {
+    width: 100%;
+    text-align: center;
+    padding: 14px 20px;
+  }
+}
