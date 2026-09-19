@@ -372,11 +372,13 @@ async function loadDashboard() {
   await loadTikTokStatus(authHeaders);
   ensureStoryboardUI();
   ensureSponsorshipUI();
+  ensureQuotesUI();
   ensurePersonaSectionUI();
   ensurePersonaDropdownUI();
   ensureRepliesUI();
   ensureSubscriptionUI();
   await loadSponsorships();
+  await loadQuotes();
   await loadPersonas();
   await refreshCreditsBadge();
   await loadReferralInfo();
