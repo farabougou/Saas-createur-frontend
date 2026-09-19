@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "SaaS Créateurs",
+  "short_name": "Créateurs",
+  "description": "La plateforme tout-en-un des créateurs francophones : idées, scripts, storyboards, sponsoring et devis avec paiement.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a12",
+  "theme_color": "#0a0a12",
+  "categories": ["productivity", "business", "social"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
