@@ -49,9 +49,9 @@ function friendlyErrorMessage(err) {
     msg.includes('Load failed') ||
     msg.includes('fetch failed')
   ) {
-    return 'Impossible de contacter le serveur. Vérifie ta connexion internet et réessaie.';
+    return 'Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.';
   }
-  return msg || 'Une erreur est survenue. Réessaie dans quelques instants.';
+  return msg || 'Une erreur est survenue. Réessayez dans quelques instants.';
 }
 
 const el = {
@@ -137,7 +137,7 @@ async function loadPlans() {
 async function subscribeToPlan(planId) {
   const headers = await authHeadersOrNull();
   if (!headers) {
-    alert("Connecte-toi d'abord pour t'abonner.");
+    alert("Connectez-vous d'abord pour vous abonner.");
     return;
   }
   try {
@@ -173,7 +173,7 @@ async function ensureSubscriptionUI() {
   section.style.marginTop = '20px';
   section.innerHTML = `
     <h3 style="margin-top:0;">💳 Mon abonnement</h3>
-    <p class="muted" style="margin-top:0;">Choisis une offre pour augmenter ton quota de requêtes IA.</p>
+    <p class="muted" style="margin-top:0;">Choisissez une offre pour recevoir plus de crédits chaque mois.</p>
     <div id="subscription-plans-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px;">
       <p class="muted">Chargement des offres...</p>
     </div>
@@ -254,7 +254,7 @@ el.formSignup.addEventListener('submit', async (e) => {
 
   showMessage(
     el.authMessage,
-    'Compte créé ! Si la confirmation par email est activée sur ton projet Supabase, vérifie ta boîte mail avant de te connecter.',
+    'Compte créé ! Si une confirmation par e-mail est demandée, vérifiez votre boîte mail avant de vous connecter.',
     'success'
   );
 });
@@ -298,7 +298,7 @@ async function handleAuthRedirectIfAny() {
 
   const { error } = await supabaseClient.auth.setSession({ access_token, refresh_token });
   if (error) {
-    alert('Ce lien a expiré ou est invalide. Redemande un lien.');
+    alert('Ce lien a expiré ou est invalide. Redemandez un lien.');
     return;
   }
 
@@ -308,7 +308,7 @@ async function handleAuthRedirectIfAny() {
 }
 
 async function promptSetNewPassword() {
-  const newPassword = window.prompt('Choisis ton nouveau mot de passe (6 caractères minimum) :');
+  const newPassword = window.prompt('Choisissez votre nouveau mot de passe (6 caractères minimum) :');
   if (!newPassword) return;
   if (newPassword.length < 6) {
     alert('Le mot de passe doit contenir au moins 6 caractères.');
@@ -321,14 +321,14 @@ async function promptSetNewPassword() {
     return;
   }
 
-  alert('Mot de passe mis à jour ! Tu es maintenant connecté.');
+  alert('Mot de passe mis à jour ! Vous êtes maintenant connecté.');
 }
 
 async function requestPasswordReset() {
   const emailInput = document.getElementById('login-email');
   let email = emailInput && emailInput.value.trim();
   if (!email) {
-    email = window.prompt('Quelle est ton adresse email ?');
+    email = window.prompt('Quelle est votre adresse email ?');
   }
   if (!email) return;
 
@@ -341,7 +341,7 @@ async function requestPasswordReset() {
     return;
   }
 
-  alert('Email envoyé ! Vérifie ta boîte mail et clique sur le lien pour choisir un nouveau mot de passe.');
+  alert('Email envoyé ! Vérifiez votre boîte mail et cliquez sur le lien pour choisir un nouveau mot de passe.');
 }
 
 async function loadDashboard() {
@@ -402,7 +402,7 @@ function ensureStoryboardUI() {
   section.innerHTML = `
     <h3 style="margin-top:0;">🎬 Storyboard automatique</h3>
     <p class="muted" style="margin-top:0;">
-      Colle ton script complet, décris tes personnages et ton décor dans la Bible, et l'IA découpe tout en plans
+      Collez votre script complet, décrivez vos personnages et votre décor dans la Bible, et l'IA découpe tout en plans
       de ~10 secondes avec un prompt visuel prêt pour un générateur vidéo IA.
     </p>
     <label style="display:block;margin-top:10px;font-size:13px;">
@@ -418,7 +418,7 @@ function ensureStoryboardUI() {
     <textarea
       id="storyboard-script"
       rows="6"
-      placeholder="Colle ici le texte complet de ta narration..."
+      placeholder="Collez ici le texte complet de votre narration..."
       style="width:100%;margin-top:4px;"
     ></textarea>
     <button id="btn-generate-storyboard" style="margin-top:10px;">Générer le storyboard</button>
@@ -676,7 +676,7 @@ async function loadTikTokProfile(authHeaders) {
     if (!recentGrowth) {
       growthHtml = `
         <p class="muted" style="margin:2px 0 0;font-size:11px;">
-          Le suivi de croissance démarre aujourd'hui — reviens demain pour voir l'évolution.
+          Le suivi de croissance démarre aujourd'hui — revenez demain pour voir l'évolution.
         </p>
       `;
     } else {
@@ -765,7 +765,7 @@ async function connectTikTok() {
 }
 
 async function disconnectTikTok() {
-  const confirmed = window.confirm('Déconnecter ton compte TikTok ?');
+  const confirmed = window.confirm('Déconnecter votre compte TikTok ?');
   if (!confirmed) return;
 
   const { data: { session } } = await supabaseClient.auth.getSession();
@@ -844,7 +844,7 @@ el.btnCloseProfile.addEventListener('click', () => {
 // et X-Request-Id.
 async function streamFromEndpoint(endpoint, body, onChunk) {
   const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session) throw new Error('Session expirée, reconnecte-toi.');
+  if (!session) throw new Error('Session expirée, reconnectez-vous.');
 
   const res = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'POST',
@@ -1087,7 +1087,7 @@ async function openRepurposePicker() {
     const completed = requests.filter((r) => r.status === 'completed' && r.response);
 
     if (!completed.length) {
-      listEl.innerHTML = '<p class="muted">Aucun script terminé pour le moment. Crée d\'abord un script avec « Créer un script ».</p>';
+      listEl.innerHTML = '<p class="muted">Aucun script terminé pour le moment. Créez d\'abord un script avec « Créer un script ».</p>';
       return;
     }
 
@@ -1126,7 +1126,7 @@ async function openRepurposePicker() {
 
 document.getElementById('btn-quick-audio').addEventListener('click', () => {
   alert(
-    "🔊 La génération audio n'est pas encore branchée : il faudrait d'abord connecter un service de synthèse vocale (ex : ElevenLabs). Dis-moi si tu veux que je l'ajoute, et je m'en occupe !"
+    "🔊 La génération audio n'est pas encore disponible. Elle sera ajoutée prochainement."
   );
 });
 
@@ -1178,7 +1178,7 @@ function renderPersonasTile() {
   if (!tileEl) return;
 
   if (!allPersonas.length) {
-    tileEl.innerHTML = '<p class="muted" style="font-size:12px;">Aucun persona pour l\'instant. Clique sur « Gérer » pour en créer un.</p>';
+    tileEl.innerHTML = '<p class="muted" style="font-size:12px;">Aucun persona pour l\'instant. Cliquez sur « Gérer » pour en créer un.</p>';
     return;
   }
 
@@ -1228,8 +1228,8 @@ function ensureSponsorshipUI() {
   section.innerHTML = `
     <h3 style="margin-top:0;">🤝 Sponsoring (mini-CRM)</h3>
     <p class="muted" style="margin-top:0;">
-      Suis tes prospects de marque et génère un email de démarchage basé sur les vraies statistiques
-      d'une de tes vidéos performantes.
+      Suivez vos prospects de marque et générez un email de démarchage basé sur les vraies statistiques
+      d'une de vos vidéos performantes.
     </p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">
       <input id="sponsor-brand-name" placeholder="Nom de la marque" style="flex:1;min-width:140px;" />
@@ -1520,14 +1520,14 @@ function ensurePersonaSectionUI() {
   section.innerHTML = `
     <h3 style="margin-top:0;">🎭 Mes Voix &amp; Personnages</h3>
     <p class="muted" style="margin-top:0;">
-      Crée des personas (ton, vocabulaire, mots interdits) pour que l'IA écrive avec une voix précise et cohérente
-      au lieu d'une voix générique. Choisis-en un dans le menu déroulant de la modale « Créer un script », avant de générer du contenu.
+      Créez des personas (ton, vocabulaire, mots interdits) pour que l'IA écrive avec une voix précise et cohérente
+      au lieu d'une voix générique. Choisissez-en un dans le menu déroulant de la modale « Créer un script », avant de générer du contenu.
     </p>
 
     <details style="margin:10px 0;">
       <summary style="cursor:pointer;font-size:13px;">🧬 Extraire un persona à partir d'un script existant</summary>
       <div style="margin-top:8px;">
-        <textarea id="persona-extract-script" rows="5" placeholder="Colle ici un script ou une transcription déjà écrite dans le style à reproduire..." style="width:100%;"></textarea>
+        <textarea id="persona-extract-script" rows="5" placeholder="Collez ici un script ou une transcription déjà écrite dans le style à reproduire..." style="width:100%;"></textarea>
         <button id="btn-extract-persona" style="margin-top:6px;">Analyser le style</button>
       </div>
     </details>
@@ -1685,7 +1685,7 @@ async function extractPersonaFromScript() {
 
   const script = document.getElementById('persona-extract-script').value;
   if (!script.trim()) {
-    showMessage(messageEl, 'Colle un script à analyser.', 'error');
+    showMessage(messageEl, 'Collez un script à analyser.', 'error');
     return;
   }
 
@@ -1713,7 +1713,7 @@ async function extractPersonaFromScript() {
     document.getElementById('persona-forbidden').value = persona.forbidden_words || '';
     document.getElementById('persona-instructions').value = persona.custom_instructions || '';
 
-    showMessage(messageEl, 'Persona extrait ! Vérifie les champs ci-dessous puis clique sur "Enregistrer ce persona".', 'success');
+    showMessage(messageEl, 'Persona extrait ! Vérifiez les champs ci-dessous puis cliquez sur "Enregistrer ce persona".', 'success');
     refreshCreditsBadge();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
@@ -1743,15 +1743,15 @@ function ensureRepliesUI() {
   section.innerHTML = `
     <h3 style="margin-top:0;">💬 Réponses intelligentes aux commentaires</h3>
     <p class="muted" style="margin-top:0;">
-      Colle les commentaires reçus sous une de tes vidéos TikTok (un par ligne), choisis une voix, et l'IA rédige
-      une proposition de réponse pour chacun — à toi de la valider ou de la modifier avant de la publier toi-même sur TikTok.
+      Collez les commentaires reçus sous une de vos vidéos TikTok (un par ligne), choisissez une voix, et l'IA rédige
+      une proposition de réponse pour chacun — à vous de la valider ou de la modifier avant de la publier vous-même sur TikTok.
     </p>
     <input id="replies-video-url" placeholder="Lien de la vidéo TikTok (optionnel, pour l'ouvrir directement)" style="width:100%;margin-bottom:8px;" />
     <label style="display:block;font-size:13px;margin-bottom:4px;">Voix / Personnage à utiliser</label>
     <select id="replies-persona-select" style="width:100%;margin-bottom:8px;">
       <option value="">Standard (par défaut)</option>
     </select>
-    <textarea id="replies-comments" rows="6" placeholder="Colle les commentaires ici, un par ligne..." style="width:100%;"></textarea>
+    <textarea id="replies-comments" rows="6" placeholder="Collez les commentaires ici, un par ligne..." style="width:100%;"></textarea>
     <button id="btn-generate-replies" style="margin-top:8px;">Générer les réponses</button>
     <div id="replies-message"></div>
     <div id="replies-results" style="margin-top:12px;display:grid;gap:8px;"></div>
@@ -1786,7 +1786,7 @@ async function generateReplies() {
   const videoUrl = document.getElementById('replies-video-url').value.trim();
 
   if (!comments.length) {
-    showMessage(messageEl, 'Colle au moins un commentaire.', 'error');
+    showMessage(messageEl, 'Collez au moins un commentaire.', 'error');
     return;
   }
 
@@ -1911,7 +1911,7 @@ async function loadReferralInfo() {
 
     const referralLink = `${window.location.origin}/?ref=${referral_code}`;
     contentEl.innerHTML = `
-      <p style="font-size:12px;margin:0 0 6px;">Ton lien de parrainage :</p>
+      <p style="font-size:12px;margin:0 0 6px;">Votre lien de parrainage :</p>
       <div style="display:flex;gap:6px;">
         <input id="referral-link-input" readonly value="${referralLink}" style="flex:1;font-size:11px;" />
         <button id="btn-copy-referral-link" class="secondary" style="font-size:12px;white-space:nowrap;">📋 Copier</button>
@@ -1961,7 +1961,7 @@ async function claimPendingReferralIfAny() {
     });
     const data = await res.json();
     if (res.ok) {
-      alert(`🎉 Parrainage validé : +${data.credits_granted} crédits pour toi !`);
+      alert(`🎉 Parrainage validé : +${data.credits_granted} crédits pour vous !`);
       refreshCreditsBadge();
       loadReferralInfo();
     }
@@ -1979,7 +1979,7 @@ if (tiktokParam === 'success') {
   alert('Compte TikTok connecté avec succès !');
   window.history.replaceState({}, '', window.location.pathname);
 } else if (tiktokParam === 'error') {
-  alert('La connexion TikTok a échoué. Réessaie.');
+  alert('La connexion TikTok a échoué. Réessayez.');
   window.history.replaceState({}, '', window.location.pathname);
 }
 

@@ -86,20 +86,20 @@ function ensureQuotesUI() {
   section.innerHTML = `
     <h3 style="margin-top:0;">🧾 Devis &amp; paiement</h3>
     <p class="muted" style="margin-top:0;">
-      Crée un devis avec un lien de paiement par carte (Stripe) et, si tu veux, ton numéro mobile money, puis envoie-le en PDF à ton client par WhatsApp.
+      Créez un devis avec un lien de paiement par carte (Stripe) et, si vous le souhaitez, votre numéro mobile money, puis envoyez-le en PDF à votre client par WhatsApp.
     </p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;">
-      <span class="muted" style="font-size:13px;">Nom affiché sur tes devis :</span>
-      <input id="quote-issuer-name" maxlength="80" placeholder="Ton nom ou celui de ton entreprise" style="flex:1;min-width:200px;" />
+      <span class="muted" style="font-size:13px;">Nom affiché sur vos devis :</span>
+      <input id="quote-issuer-name" maxlength="80" placeholder="Votre nom ou celui de votre entreprise" style="flex:1;min-width:200px;" />
       <button class="secondary" id="btn-save-issuer">Enregistrer</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;">
-      <span class="muted" style="font-size:13px;">Ton numéro mobile money :</span>
+      <span class="muted" style="font-size:13px;">Votre numéro mobile money :</span>
       <input id="quote-mobile-money" maxlength="80" placeholder="Orange Money +223 70 00 00 00" style="flex:1;min-width:200px;" />
       <button class="secondary" id="btn-save-mobile-money">Enregistrer</button>
     </div>
     <p class="muted" style="margin:0 0 12px;font-size:12px;">
-      Facultatif. Il apparaît sur le PDF et dans le message WhatsApp pour que ton client puisse payer par Orange Money ou Moov Money. Vide le champ puis enregistre pour le retirer.
+      Facultatif. Il apparaît sur le PDF et dans le message WhatsApp pour que votre client puisse payer par Orange Money ou Moov Money. Videz le champ puis enregistrez pour le retirer.
     </p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:12px 0;">
       <input id="quote-client-name" placeholder="Nom du client" />
@@ -164,7 +164,7 @@ async function saveIssuerName() {
 
   const full_name = document.getElementById('quote-issuer-name').value.trim();
   if (!full_name) {
-    showMessage(messageEl, 'Indique le nom à afficher sur tes devis.', 'error');
+    showMessage(messageEl, 'Indiquez le nom à afficher sur vos devis.', 'error');
     return;
   }
 
@@ -173,7 +173,7 @@ async function saveIssuerName() {
   try {
     const { error } = await supabaseClient.auth.updateUser({ data: { full_name } });
     if (error) throw error;
-    showMessage(messageEl, 'Nom enregistré : il apparaîtra sur tes PDF (y compris les anciens devis).', 'success');
+    showMessage(messageEl, 'Nom enregistré : il apparaîtra sur vos PDF (y compris les anciens devis).', 'success');
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
   } finally {
@@ -198,8 +198,8 @@ async function saveMobileMoney() {
     showMessage(
       messageEl,
       mobile_money
-        ? 'Numéro enregistré : il apparaîtra sur tes PDF et dans le message WhatsApp.'
-        : 'Numéro retiré : il n\'apparaîtra plus sur tes devis.',
+        ? 'Numéro enregistré : il apparaîtra sur vos PDF et dans le message WhatsApp.'
+        : 'Numéro retiré : il n\'apparaîtra plus sur vos devis.',
       'success'
     );
   } catch (err) {
@@ -343,7 +343,7 @@ async function createQuote() {
     return;
   }
   if (!phoneToWhatsappNumber(client_phone)) {
-    showMessage(messageEl, 'Indique le numéro avec l\'indicatif du pays, par exemple +223 70 00 00 00 ou +33 6 12 34 56 78.', 'error');
+    showMessage(messageEl, 'Indiquez le numéro avec l\'indicatif du pays, par exemple +223 70 00 00 00 ou +33 6 12 34 56 78.', 'error');
     return;
   }
   if (!amount_cents) {
@@ -371,7 +371,7 @@ async function createQuote() {
     document.getElementById('quote-client-phone').value = '';
     document.getElementById('quote-amount').value = '';
     document.getElementById('quote-description').value = '';
-    showMessage(messageEl, 'Devis créé. Tu peux maintenant l\'envoyer par WhatsApp.', 'success');
+    showMessage(messageEl, 'Devis créé. Vous pouvez maintenant l\'envoyer par WhatsApp.', 'success');
     await loadQuotes();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
@@ -385,7 +385,7 @@ async function createQuote() {
 // renvoie sous forme de fichier prêt à être téléchargé ou partagé.
 async function fetchQuotePdfFile(quote) {
   const headers = await authHeadersOrNull();
-  if (!headers) throw new Error('Session expirée : reconnecte-toi.');
+  if (!headers) throw new Error('Session expirée : reconnectez-vous.');
 
   const res = await fetch(`${API_BASE_URL}/api/quotes/${quote.id}/pdf`, { headers });
   if (!res.ok) {
@@ -436,7 +436,7 @@ async function sendQuoteViaWhatsapp(quote, btn) {
 
   const waNumber = phoneToWhatsappNumber(quote.client_phone);
   if (!waNumber) {
-    showMessage(messageEl, `Le numéro « ${escapeHtml(quote.client_phone)} » n'a pas d'indicatif pays : impossible d'ouvrir WhatsApp. Crée un nouveau devis avec un numéro du type +223 70 00 00 00.`, 'error');
+    showMessage(messageEl, `Le numéro « ${escapeHtml(quote.client_phone)} » n'a pas d'indicatif pays : impossible d'ouvrir WhatsApp. Créez un nouveau devis avec un numéro du type +223 70 00 00 00.`, 'error');
     return;
   }
 
@@ -480,7 +480,7 @@ async function sendQuoteViaWhatsapp(quote, btn) {
     const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`;
     showMessage(
       messageEl,
-      `Le PDF a été téléchargé. <a href="${waUrl}" target="_blank" rel="noopener" onclick="markQuoteSent('${escapeHtml(String(quote.id))}')">Ouvrir WhatsApp avec le message →</a> puis joins le fichier ${quoteNumber(quote)}.pdf dans la conversation.`,
+      `Le PDF a été téléchargé. <a href="${waUrl}" target="_blank" rel="noopener" onclick="markQuoteSent('${escapeHtml(String(quote.id))}')">Ouvrir WhatsApp avec le message →</a> puis joignez le fichier ${quoteNumber(quote)}.pdf dans la conversation.`,
       'success'
     );
   } catch (err) {
