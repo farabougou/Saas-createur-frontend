@@ -387,7 +387,14 @@ async function fetchQuotePdfFile(quote) {
   const headers = await authHeadersOrNull();
   if (!headers) throw new Error('Session expirée : reconnectez-vous.');
 
-  const res = await fetch(`${API_BASE_URL}/api/quotes/${quote.id}/pdf`, { headers });
+  // Le PDF affiche la date d'émission dans NOTRE fuseau horaire, pas celui du serveur.
+  let tz = '';
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    tz = '';
+  }
+  const res = await fetch(`${API_BASE_URL}/api/quotes/${quote.id}/pdf?tz=${encodeURIComponent(tz)}`, { headers });
   if (!res.ok) {
     let message = 'Impossible de générer le PDF.';
     try { message = (await res.json()).error || message; } catch { /* réponse non JSON */ }
