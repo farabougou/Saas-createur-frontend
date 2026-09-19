@@ -74,6 +74,11 @@ function ensureQuotesUI() {
     <p class="muted" style="margin-top:0;">
       Crée un devis avec un lien de paiement Stripe, puis envoie-le en PDF à ton client par WhatsApp.
     </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;">
+      <span class="muted" style="font-size:13px;">Nom affiché sur tes devis :</span>
+      <input id="quote-issuer-name" maxlength="80" placeholder="Ton nom ou celui de ton entreprise" style="flex:1;min-width:200px;" />
+      <button class="secondary" id="btn-save-issuer">Enregistrer</button>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:12px 0;">
       <input id="quote-client-name" placeholder="Nom du client" />
       <input id="quote-client-phone" type="tel" placeholder="N° WhatsApp (+223 70 00 00 00)" />
@@ -91,6 +96,8 @@ function ensureQuotesUI() {
 
   el.extraTools.appendChild(section);
   document.getElementById('btn-create-quote').addEventListener('click', createQuote);
+  document.getElementById('btn-save-issuer').addEventListener('click', saveIssuerName);
+  prefillIssuerName();
 
   // Un seul écouteur pour tous les boutons de la liste (la liste est
   // redessinée à chaque changement).
@@ -102,6 +109,43 @@ function ensureQuotesUI() {
     if (btn.dataset.quoteAction === 'pdf') downloadQuotePdf(quote, btn);
     if (btn.dataset.quoteAction === 'whatsapp') sendQuoteViaWhatsapp(quote, btn);
   });
+}
+
+// Le nom qui apparaît en haut à gauche du PDF ("Émetteur") est lu par le
+// backend dans les informations du compte (user_metadata.full_name). On le
+// modifie donc directement via Supabase Auth : aucune table à changer.
+async function prefillIssuerName() {
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const name = session?.user?.user_metadata?.full_name || '';
+    const input = document.getElementById('quote-issuer-name');
+    if (input && !input.value) input.value = name;
+  } catch {
+    // pas grave : le champ reste vide
+  }
+}
+
+async function saveIssuerName() {
+  const messageEl = document.getElementById('quotes-message');
+  clearMessage(messageEl);
+
+  const full_name = document.getElementById('quote-issuer-name').value.trim();
+  if (!full_name) {
+    showMessage(messageEl, 'Indique le nom à afficher sur tes devis.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-issuer');
+  btn.disabled = true;
+  try {
+    const { error } = await supabaseClient.auth.updateUser({ data: { full_name } });
+    if (error) throw error;
+    showMessage(messageEl, 'Nom enregistré : il apparaîtra sur tes PDF (y compris les anciens devis).', 'success');
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function loadQuotes() {
