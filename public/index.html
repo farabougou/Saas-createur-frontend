@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SaaS Créateurs</title>
+  <title>SaaS Créateurs — Crée, analyse et monétise ton contenu</title>
+  <meta name="description" content="SaaS Créateurs : la plateforme tout-en-un des créateurs francophones. Idées tendance, scripts, storyboards, réponses aux commentaires, sponsoring et devis avec paiement." />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="style.css" />
   <meta name="tiktok-developers-site-verification" content="H4NBCZRPkaEtkICDCtFlNhJ1no2IoTq9" />
@@ -17,35 +18,100 @@
 
     <!-- ======================= VUE VISITEUR (non connecté) ======================= -->
     <div id="view-public">
-      <section id="plans-section">
-        <h2>Nos offres</h2>
+
+      <!-- ---------- Hero : promesse + inscription/connexion ---------- -->
+      <section class="lp-hero">
+        <div class="lp-hero-text">
+          <span class="lp-badge">Pour les créateurs francophones</span>
+          <h2 class="lp-title">Crée, analyse et monétise ton contenu, <span class="lp-accent">au même endroit.</span></h2>
+          <p class="lp-sub">
+            Idées qui explosent, scripts, storyboards, réponses aux commentaires, sponsoring et devis avec paiement :
+            SaaS Créateurs remplace la dizaine d'outils que tu jongles chaque jour.
+          </p>
+          <div class="lp-cta-row">
+            <a href="#auth-section" class="lp-btn lp-btn-primary" data-go-auth="signup">Créer mon compte gratuit</a>
+            <a href="#lp-features" class="lp-btn lp-btn-ghost">Découvrir les fonctionnalités</a>
+          </div>
+          <ul class="lp-trust">
+            <li>✓ Gratuit pour commencer</li>
+            <li>✓ Sans carte bancaire</li>
+            <li>✓ Interface 100 % en français</li>
+          </ul>
+        </div>
+        <div class="lp-hero-auth">
+          <section id="auth-section" class="card auth-card">
+            <div class="auth-tabs">
+              <button id="tab-login" class="auth-tab active">Connexion</button>
+              <button id="tab-signup" class="auth-tab">Créer un compte</button>
+            </div>
+
+            <form id="form-login">
+              <label>Email</label>
+              <input type="email" id="login-email" required />
+              <label>Mot de passe</label>
+              <input type="password" id="login-password" required />
+              <button type="submit">Se connecter</button>
+              <p style="margin-top:8px;font-size:13px;"><a href="#" id="link-forgot-password">Mot de passe oublié ?</a></p>
+            </form>
+
+            <form id="form-signup" class="hidden">
+              <label>Email</label>
+              <input type="email" id="signup-email" required />
+              <label>Mot de passe</label>
+              <input type="password" id="signup-password" required minlength="6" />
+              <button type="submit">Créer mon compte</button>
+            </form>
+
+            <div id="auth-message"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ---------- Fonctionnalités ---------- -->
+      <section id="lp-features" class="lp-section">
+        <h2 class="lp-h2">Tout ce qu'il te faut pour créer plus, et mieux</h2>
+        <p class="lp-lead">Une seule plateforme, de l'idée jusqu'au paiement de ton client.</p>
+        <div class="lp-grid">
+          <article class="lp-card"><div class="lp-icon">🛰️</div><h3>Radar de tendances</h3><p>Repère les sujets qui explosent en ce moment, adaptés à ta niche, avant tout le monde.</p></article>
+          <article class="lp-card"><div class="lp-icon">✍️</div><h3>Scripts en quelques secondes</h3><p>Décris ton idée, obtiens un script prêt à tourner, dans ton style et avec ton ton.</p></article>
+          <article class="lp-card"><div class="lp-icon">🔁</div><h3>Un contenu, plusieurs formats</h3><p>Transforme un script en thread et réutilise tes meilleures idées sans tout réécrire.</p></article>
+          <article class="lp-card"><div class="lp-icon">🎭</div><h3>Tes personnages</h3><p>Crée les personnages de ton univers et garde-les cohérents d'une vidéo à l'autre.</p></article>
+          <article class="lp-card"><div class="lp-icon">🎬</div><h3>Storyboard et vidéo</h3><p>Découpe ton histoire en scènes automatiquement. La génération vidéo est incluse avec les offres payantes.</p></article>
+          <article class="lp-card"><div class="lp-icon">💬</div><h3>Réponses aux commentaires</h3><p>Reçois une proposition de réponse pour chaque commentaire. Tu valides ou tu modifies avant d'envoyer.</p></article>
+          <article class="lp-card"><div class="lp-icon">🤝</div><h3>Sponsoring</h3><p>Prépare un pitch professionnel pour convaincre une marque de travailler avec toi.</p></article>
+          <article class="lp-card"><div class="lp-icon">🧾</div><h3>Devis et paiement</h3><p>Crée un devis en PDF, envoie-le par WhatsApp et fais-toi payer par carte ou par mobile money (Orange Money, Moov Money).</p></article>
+          <article class="lp-card"><div class="lp-icon">💎</div><h3>Parrainage</h3><p>Invite un autre créateur : vous gagnez chacun 50 crédits pour générer davantage.</p></article>
+        </div>
+      </section>
+
+      <!-- ---------- Comment ça marche ---------- -->
+      <section class="lp-section">
+        <h2 class="lp-h2">Comment ça marche</h2>
+        <div class="lp-steps">
+          <div class="lp-step"><span class="lp-step-num">1</span><h3>Crée ton compte</h3><p>C'est gratuit et ça prend une minute : un e-mail, un mot de passe.</p></div>
+          <div class="lp-step"><span class="lp-step-num">2</span><h3>Présente ton univers</h3><p>Indique ta niche et tes personnages pour que les idées te ressemblent.</p></div>
+          <div class="lp-step"><span class="lp-step-num">3</span><h3>Crée, publie, encaisse</h3><p>Génère tes contenus, réponds à ta communauté et facture tes collaborations.</p></div>
+        </div>
+      </section>
+
+      <!-- ---------- Offres (la grille est remplie par app.js) ---------- -->
+      <section id="plans-section" class="lp-section">
+        <h2 class="lp-h2">Des offres simples</h2>
+        <p class="lp-lead">Commence gratuitement, passe à une offre payante quand tu as besoin de plus.</p>
         <div id="plans-grid" class="plans-grid"></div>
       </section>
 
-      <section id="auth-section" class="card auth-card">
-        <div class="auth-tabs">
-          <button id="tab-login" class="auth-tab active">Connexion</button>
-          <button id="tab-signup" class="auth-tab">Créer un compte</button>
-        </div>
+      <!-- ---------- Questions fréquentes ---------- -->
+      <section class="lp-section lp-faq">
+        <h2 class="lp-h2">Questions fréquentes</h2>
+        <details><summary>Est-ce vraiment gratuit ?</summary><p>Oui : l'offre gratuite te permet de découvrir l'outil sans carte bancaire. Les offres payantes ajoutent plus de puissance et la génération vidéo.</p></details>
+        <details><summary>Comment je paie mon abonnement ?</summary><p>Par carte bancaire, sur une page de paiement sécurisée par Stripe. Nous ne voyons ni ne stockons les numéros de carte.</p></details>
+        <details><summary>Mes clients au Mali peuvent-ils me payer par Orange Money ?</summary><p>Oui. Sur tes devis, tu ajoutes ton numéro mobile money : il apparaît sur le PDF et dans le message WhatsApp, avec la référence du devis. Tu marques ensuite le devis comme payé dès que tu reçois le transfert.</p></details>
+      </section>
 
-        <form id="form-login">
-          <label>Email</label>
-          <input type="email" id="login-email" required />
-          <label>Mot de passe</label>
-          <input type="password" id="login-password" required />
-          <button type="submit">Se connecter</button>
-          <p style="margin-top:8px;font-size:13px;"><a href="#" id="link-forgot-password">Mot de passe oublié ?</a></p>
-        </form>
-
-        <form id="form-signup" class="hidden">
-          <label>Email</label>
-          <input type="email" id="signup-email" required />
-          <label>Mot de passe</label>
-          <input type="password" id="signup-password" required minlength="6" />
-          <button type="submit">Créer mon compte</button>
-        </form>
-
-        <div id="auth-message"></div>
+      <section class="lp-final">
+        <h2 class="lp-h2">Prêt à gagner du temps sur ton contenu ?</h2>
+        <a href="#auth-section" class="lp-btn lp-btn-primary" data-go-auth="signup">Créer mon compte gratuit</a>
       </section>
     </div>
 
@@ -114,7 +180,10 @@
       </main>
     </div>
 
-    <footer>SaaS Créateurs — propulsé par Supabase &amp; Railway</footer>
+    <footer>
+      <p><a href="privacy.html">Confidentialité</a> · <a href="terms.html">Conditions d'utilisation</a></p>
+      <p>SaaS Créateurs — propulsé par Supabase &amp; Railway. Service indépendant : TikTok est une marque de ses propriétaires respectifs.</p>
+    </footer>
   </div>
 
   <!-- ======================= MODAL : Profil & paramètres ======================= -->
@@ -211,5 +280,20 @@
   <script src="config.js"></script>
   <script src="quotes.js"></script>
   <script src="app.js"></script>
+  <script>
+    // Boutons "Créer mon compte gratuit" de la page d'accueil : on ouvre l'onglet
+    // d'inscription et on fait défiler jusqu'au formulaire.
+    document.querySelectorAll('[data-go-auth]').forEach(function (link) {
+      link.addEventListener('click', function (event) {
+        event.preventDefault();
+        var tab = document.getElementById(link.dataset.goAuth === 'signup' ? 'tab-signup' : 'tab-login');
+        if (tab) tab.click();
+        var box = document.getElementById('auth-section');
+        if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        var field = document.getElementById(link.dataset.goAuth === 'signup' ? 'signup-email' : 'login-email');
+        if (field) setTimeout(function () { field.focus({ preventScroll: true }); }, 400);
+      });
+    });
+  </script>
 </body>
 </html>
