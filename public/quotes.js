@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 // Devis & factures : création, liste, téléchargement du PDF et envoi par
-// WhatsApp (avec le lien de paiement Stripe).
+// WhatsApp (avec le lien de paiement Stripe et/ou ton numéro mobile money).
 //
 // Ce fichier est chargé AVANT app.js (voir index.html). Il utilise des
 // éléments définis dans app.js (el, authHeadersOrNull, API_BASE_URL,
@@ -63,7 +63,8 @@ function phoneToWhatsappNumber(phone) {
 }
 
 // Petite pastille de statut. "payé" est mis à jour automatiquement par le
-// backend (webhook Stripe) quand le client règle son devis.
+// backend (webhook Stripe) quand le client règle par carte ; pour un paiement
+// par mobile money, c'est le créateur qui clique sur "Payé" dans la liste.
 function quoteStatusBadge(status) {
   const styles = {
     'payé': { label: 'Payé ✓', bg: 'rgba(34,197,94,0.18)', color: '#4ade80' },
@@ -83,13 +84,21 @@ function ensureQuotesUI() {
   section.innerHTML = `
     <h3 style="margin-top:0;">🧾 Devis &amp; paiement</h3>
     <p class="muted" style="margin-top:0;">
-      Crée un devis avec un lien de paiement Stripe, puis envoie-le en PDF à ton client par WhatsApp.
+      Crée un devis avec un lien de paiement par carte (Stripe) et, si tu veux, ton numéro mobile money, puis envoie-le en PDF à ton client par WhatsApp.
     </p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;">
       <span class="muted" style="font-size:13px;">Nom affiché sur tes devis :</span>
       <input id="quote-issuer-name" maxlength="80" placeholder="Ton nom ou celui de ton entreprise" style="flex:1;min-width:200px;" />
       <button class="secondary" id="btn-save-issuer">Enregistrer</button>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;">
+      <span class="muted" style="font-size:13px;">Ton numéro mobile money :</span>
+      <input id="quote-mobile-money" maxlength="80" placeholder="Orange Money +223 70 00 00 00" style="flex:1;min-width:200px;" />
+      <button class="secondary" id="btn-save-mobile-money">Enregistrer</button>
+    </div>
+    <p class="muted" style="margin:0 0 12px;font-size:12px;">
+      Facultatif. Il apparaît sur le PDF et dans le message WhatsApp pour que ton client puisse payer par Orange Money ou Moov Money. Vide le champ puis enregistre pour le retirer.
+    </p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:12px 0;">
       <input id="quote-client-name" placeholder="Nom du client" />
       <input id="quote-client-phone" type="tel" placeholder="N° WhatsApp (+223 70 00 00 00)" />
@@ -108,6 +117,7 @@ function ensureQuotesUI() {
   el.extraTools.appendChild(section);
   document.getElementById('btn-create-quote').addEventListener('click', createQuote);
   document.getElementById('btn-save-issuer').addEventListener('click', saveIssuerName);
+  document.getElementById('btn-save-mobile-money').addEventListener('click', saveMobileMoney);
   prefillIssuerName();
 
   // Quand on revient sur l'onglet (par exemple après avoir payé le devis de
@@ -125,6 +135,7 @@ function ensureQuotesUI() {
     if (!quote) return;
     if (btn.dataset.quoteAction === 'pdf') downloadQuotePdf(quote, btn);
     if (btn.dataset.quoteAction === 'whatsapp') sendQuoteViaWhatsapp(quote, btn);
+    if (btn.dataset.quoteAction === 'mark-paid') markQuoteAsPaid(quote, btn);
   });
 }
 
@@ -134,9 +145,11 @@ function ensureQuotesUI() {
 async function prefillIssuerName() {
   try {
     const { data: { session } } = await supabaseClient.auth.getSession();
-    const name = session?.user?.user_metadata?.full_name || '';
+    const meta = session?.user?.user_metadata || {};
     const input = document.getElementById('quote-issuer-name');
-    if (input && !input.value) input.value = name;
+    if (input && !input.value) input.value = meta.full_name || '';
+    const mmInput = document.getElementById('quote-mobile-money');
+    if (mmInput && !mmInput.value) mmInput.value = meta.mobile_money || '';
   } catch {
     // pas grave : le champ reste vide
   }
@@ -161,6 +174,68 @@ async function saveIssuerName() {
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
   } finally {
+    btn.disabled = false;
+  }
+}
+
+// Numéro mobile money du créateur : enregistré dans les infos du compte
+// (user_metadata.mobile_money), comme le nom de l'émetteur. Le backend le lit
+// pour l'écrire sur le PDF. Un champ vide le retire.
+async function saveMobileMoney() {
+  const messageEl = document.getElementById('quotes-message');
+  clearMessage(messageEl);
+
+  const mobile_money = document.getElementById('quote-mobile-money').value.trim();
+
+  const btn = document.getElementById('btn-save-mobile-money');
+  btn.disabled = true;
+  try {
+    const { error } = await supabaseClient.auth.updateUser({ data: { mobile_money } });
+    if (error) throw error;
+    showMessage(
+      messageEl,
+      mobile_money
+        ? 'Numéro enregistré : il apparaîtra sur tes PDF et dans le message WhatsApp.'
+        : 'Numéro retiré : il n\'apparaîtra plus sur tes devis.',
+      'success'
+    );
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function getMobileMoneyNumber() {
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    return String(session?.user?.user_metadata?.mobile_money || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+// Le client a payé autrement que par Stripe (mobile money, espèces...) :
+// le créateur passe lui-même le devis à "payé".
+async function markQuoteAsPaid(quote, btn) {
+  const messageEl = document.getElementById('quotes-message');
+  clearMessage(messageEl);
+
+  if (!window.confirm(`Marquer le devis ${quoteNumber(quote)} de ${quote.client_name} comme payé ?`)) return;
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/quotes/${quote.id}/mark-paid`, { method: 'POST', headers });
+    let data = {};
+    try { data = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(data.error || 'Impossible de mettre à jour le devis.');
+    showMessage(messageEl, `Devis ${quoteNumber(quote)} marqué comme payé.`, 'success');
+    await loadQuotes();
+  } catch (err) {
+    showMessage(messageEl, friendlyErrorMessage(err), 'error');
     btn.disabled = false;
   }
 }
@@ -202,7 +277,8 @@ function renderQuotes() {
             <div class="muted" style="font-size:13px;">${escapeHtml(desc)}</div>
           </div>
           <div style="font-weight:600;">${escapeHtml(formatQuoteAmount(q.amount_cents, q.currency))}</div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${q.status === 'payé' ? '' : `<button class="secondary" data-quote-action="mark-paid" data-quote-id="${escapeHtml(String(q.id))}">✅ Payé</button>`}
             <button class="secondary" data-quote-action="pdf" data-quote-id="${escapeHtml(String(q.id))}">📄 PDF</button>
             <button data-quote-action="whatsapp" data-quote-id="${escapeHtml(String(q.id))}">💬 WhatsApp</button>
           </div>
@@ -324,6 +400,7 @@ async function sendQuoteViaWhatsapp(quote, btn) {
   }
 
   const amount = formatQuoteAmount(quote.amount_cents, quote.currency);
+  const mobileMoney = await getMobileMoneyNumber();
   const lines = [
     `Bonjour ${quote.client_name},`,
     '',
@@ -331,7 +408,10 @@ async function sendQuoteViaWhatsapp(quote, btn) {
     `Montant : ${amount}`,
   ];
   if (quote.stripe_payment_link) {
-    lines.push('', `Vous pouvez le régler en ligne, en toute sécurité : ${quote.stripe_payment_link}`);
+    lines.push('', `Vous pouvez le régler par carte, en toute sécurité : ${quote.stripe_payment_link}`);
+  }
+  if (mobileMoney) {
+    lines.push('', `Ou par mobile money : envoyez ${amount} au ${mobileMoney} en indiquant la référence ${quoteNumber(quote)}.`);
   }
   lines.push('', 'Merci !');
   const text = lines.join('\n');
