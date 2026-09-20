@@ -266,6 +266,12 @@ function renderContactDetails(contact) {
   `;
 }
 
+// Recharge le carnet après un changement fait ailleurs (devis, sponsoring)
+// qui peut avoir créé un contact ou changé ses compteurs.
+function refreshContactsIfReady() {
+  if (document.getElementById('contacts-section')) loadContacts();
+}
+
 async function loadContacts() {
   const headers = await authHeadersOrNull();
   if (!headers) return;
@@ -275,6 +281,7 @@ async function loadContacts() {
     if (!res.ok) throw new Error('Erreur de chargement des contacts.');
     allContacts = await res.json();
     renderContacts();
+    if (typeof refreshQuoteContactPicker === 'function') refreshQuoteContactPicker();
   } catch (err) {
     const listEl = document.getElementById('contacts-list');
     if (listEl) listEl.innerHTML = `<p class="muted">Erreur : ${escapeHtml(friendlyErrorMessage(err))}</p>`;

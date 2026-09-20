@@ -101,6 +101,12 @@ function ensureQuotesUI() {
     <p class="muted" style="margin:0 0 12px;font-size:12px;">
       Indispensable pour créer des devis. Il apparaît sur le PDF et dans le message WhatsApp pour que votre client puisse payer par Orange Money ou Moov Money. Videz le champ puis enregistrez pour le retirer.
     </p>
+    <div style="margin:12px 0 0;">
+      <select id="quote-contact" style="width:100%;" aria-label="Contact du carnet">
+        <option value="">Nouveau client ou saisie libre</option>
+      </select>
+      <p class="muted" style="margin:4px 0 0;font-size:12px;">Choisissez un contact de votre carnet pour remplir le nom et le numéro. Sinon, le client est ajouté automatiquement à vos contacts.</p>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:12px 0;">
       <input id="quote-client-name" placeholder="Nom du client" />
       <input id="quote-client-phone" type="tel" placeholder="N° WhatsApp (+223 70 00 00 00)" />
@@ -118,6 +124,15 @@ function ensureQuotesUI() {
 
   el.extraTools.appendChild(section);
   document.getElementById('btn-create-quote').addEventListener('click', createQuote);
+  document.getElementById('quote-contact').addEventListener('change', onQuoteContactChange);
+  // Si l'utilisateur retouche le nom ou le numéro à la main, ce n'est plus
+  // forcément le contact choisi : on revient à « saisie libre ».
+  ['quote-client-name', 'quote-client-phone'].forEach((fieldId) => {
+    document.getElementById(fieldId).addEventListener('input', () => {
+      document.getElementById('quote-contact').value = '';
+    });
+  });
+  refreshQuoteContactPicker();
   document.getElementById('btn-save-issuer').addEventListener('click', saveIssuerName);
   document.getElementById('btn-save-mobile-money').addEventListener('click', saveMobileMoney);
   prefillIssuerName();
@@ -140,6 +155,37 @@ function ensureQuotesUI() {
     if (btn.dataset.quoteAction === 'mark-paid') markQuoteAsPaid(quote, btn);
     if (btn.dataset.quoteAction === 'delete') deleteQuote(quote, btn);
   });
+}
+
+// Remplit la liste déroulante avec les contacts du carnet (allContacts est
+// défini dans contacts.js).
+function refreshQuoteContactPicker() {
+  const select = document.getElementById('quote-contact');
+  if (!select) return;
+  const contacts = typeof allContacts !== 'undefined' && Array.isArray(allContacts) ? allContacts : [];
+  const current = select.value;
+  select.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'Nouveau client ou saisie libre';
+  select.appendChild(none);
+  contacts.forEach((contact) => {
+    const option = document.createElement('option');
+    option.value = contact.id;
+    option.textContent = contact.company ? `${contact.name} (${contact.company})` : contact.name;
+    select.appendChild(option);
+  });
+  select.value = contacts.some((contact) => contact.id === current) ? current : '';
+}
+
+// Un contact est choisi : on remplit le nom et le numéro du devis.
+function onQuoteContactChange() {
+  const id = document.getElementById('quote-contact').value;
+  if (!id || typeof allContacts === 'undefined') return;
+  const contact = allContacts.find((c) => String(c.id) === id);
+  if (!contact) return;
+  document.getElementById('quote-client-name').value = contact.name;
+  document.getElementById('quote-client-phone').value = contact.phone || '';
 }
 
 // Le nom qui apparaît en haut à gauche du PDF ("Émetteur") est lu par le
@@ -274,6 +320,7 @@ async function deleteQuote(quote, btn) {
     if (!res.ok) throw new Error(data.error || 'Impossible de supprimer le devis.');
     showMessage(messageEl, `Devis ${quoteNumber(quote)} supprimé.`, 'success');
     await loadQuotes();
+    refreshContactsIfReady();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
     btn.disabled = false;
@@ -362,7 +409,14 @@ async function createQuote() {
     const res = await fetch(`${API_BASE_URL}/api/quotes`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ client_name, client_phone, description, amount_cents, currency }),
+      body: JSON.stringify({
+        client_name,
+        client_phone,
+        description,
+        amount_cents,
+        currency,
+        contact_id: document.getElementById('quote-contact').value || undefined,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erreur lors de la création du devis.');
@@ -371,8 +425,10 @@ async function createQuote() {
     document.getElementById('quote-client-phone').value = '';
     document.getElementById('quote-amount').value = '';
     document.getElementById('quote-description').value = '';
+    document.getElementById('quote-contact').value = '';
     showMessage(messageEl, 'Devis créé. Vous pouvez maintenant l\'envoyer par WhatsApp.', 'success');
     await loadQuotes();
+    refreshContactsIfReady();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
   } finally {

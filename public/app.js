@@ -1411,6 +1411,7 @@ async function addSponsorship() {
     brandInput.value = '';
     emailInput.value = '';
     await loadSponsorships();
+    refreshContactsIfReady();
   } catch (err) {
     showMessage(messageEl, friendlyErrorMessage(err), 'error');
   }
@@ -1427,6 +1428,7 @@ async function deleteSponsorship(id) {
     const res = await fetch(`${API_BASE_URL}/api/sponsorships/${id}`, { method: 'DELETE', headers });
     if (!res.ok && res.status !== 204) throw new Error('Erreur lors de la suppression.');
     await loadSponsorships();
+    refreshContactsIfReady();
   } catch (err) {
     alert(friendlyErrorMessage(err));
   }
