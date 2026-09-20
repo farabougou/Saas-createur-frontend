@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <title>SaaS Créateurs — Créez, analysez et monétisez votre contenu</title>
   <meta name="description" content="SaaS Créateurs : la plateforme tout-en-un des créateurs francophones. Idées tendance, scripts, storyboards, réponses aux commentaires, sponsoring et devis avec paiement." />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="reset.css" />
   <link rel="stylesheet" href="style.css" />
   <meta name="tiktok-developers-site-verification" content="H4NBCZRPkaEtkICDCtFlNhJ1no2IoTq9" />
 </head>
@@ -230,6 +230,31 @@
         </form>
         <div id="creator-profile-message"></div>
       </section>
+
+      <section class="modal-section danger-zone">
+        <h3>Supprimer mon compte</h3>
+        <p class="muted">Action définitive : votre compte, vos scripts, devis, crédits et connexions sont effacés, et votre abonnement éventuel est résilié immédiatement.</p>
+        <button type="button" id="btn-open-delete-account" class="danger">Supprimer mon compte</button>
+      </section>
+    </div>
+  </div>
+
+  <!-- ======================= MODAL : Confirmer la suppression du compte ======================= -->
+  <div id="delete-account-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Supprimer mon compte</h2>
+        <button id="btn-close-delete-account" class="icon-btn" aria-label="Fermer">✕</button>
+      </div>
+      <p>Cette action est <strong>définitive et irréversible</strong>. Seront effacés : votre profil, vos scripts et conversations, vos devis, vos personnages, vos crédits restants et votre connexion TikTok.</p>
+      <p>Votre abonnement payant éventuel sera résilié immédiatement, sans remboursement de la période en cours. Les factures déjà émises sont conservées par notre prestataire de paiement, comme la loi l'exige.</p>
+      <label for="delete-account-confirm">Pour confirmer, tapez <strong>SUPPRIMER</strong> :</label>
+      <input id="delete-account-confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SUPPRIMER" />
+      <div class="delete-account-actions">
+        <button type="button" id="btn-cancel-delete-account" class="secondary">Annuler</button>
+        <button type="button" id="btn-confirm-delete-account" class="danger" disabled>Supprimer définitivement</button>
+      </div>
+      <div id="delete-account-message"></div>
     </div>
   </div>
 
@@ -298,6 +323,7 @@
   <script src="app.js"></script>
   <script src="mobile.js"></script>
   <script src="pwa.js"></script>
+  <script src="account.js"></script>
   <script>
     // Boutons "Créer mon compte gratuit" de la page d'accueil : on ouvre l'onglet
     // d'inscription et on fait défiler jusqu'au formulaire.

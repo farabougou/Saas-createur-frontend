@@ -353,16 +353,13 @@ async function loadDashboard() {
   try {
     const res = await fetch(`${API_BASE_URL}/api/me`, { headers: authHeaders });
     if (!res.ok) throw new Error('Erreur de chargement du profil.');
-    const { profile, subscription, usage } = await res.json();
+    const { profile, subscription } = await res.json();
 
-    const quotaText = usage.quota != null
-      ? `${usage.requestsUsed} / ${usage.quota} requêtes utilisées ce mois`
-      : `${usage.requestsUsed} requêtes utilisées ce mois`;
-
+    // Le solde en crédits remplace l'ancien compteur de requêtes mensuelles.
     el.profileCard.innerHTML = `
       <p><strong>Email :</strong> ${profile.email ?? session.user.email}</p>
       <p><strong>Abonnement :</strong> ${subscription ? subscription.plans.name : 'Aucun (offre gratuite par défaut)'}</p>
-      <p><strong>Utilisation :</strong> ${quotaText}</p>
+      <p><strong>Crédits :</strong> ${profile.credits_balance ?? 0}</p>
     `;
   } catch (err) {
     el.profileCard.innerHTML = `<p class="muted">Erreur : ${friendlyErrorMessage(err)}</p>`;
