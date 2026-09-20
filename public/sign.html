@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a12" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Signature du contrat — SaaS Créateurs</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="reset.css" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .sign-wrap { max-width: 720px; margin: 0 auto; padding: 16px 16px 60px; }
+    .sign-brand { font-size: 14px; color: var(--muted); padding: 8px 0 16px; }
+    .contract-text {
+      white-space: pre-wrap;
+      line-height: 1.55;
+      font-size: 14px;
+      padding: 14px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      max-height: 55vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .pad-box { position: relative; border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid var(--border); }
+    #pad { display: block; width: 100%; height: auto; aspect-ratio: 560 / 180; touch-action: none; cursor: crosshair; }
+    .pad-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 14px; pointer-events: none; }
+    .check-row { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 14px; }
+    .check-row input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+    .check-row label { margin: 0; color: var(--text); font-size: 14px; }
+    .big-icon { font-size: 40px; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <div class="sign-wrap">
+    <div class="sign-brand">SaaS Créateurs · Signature électronique</div>
+
+    <div id="state-loading" class="card"><p class="muted" style="margin:0;">Chargement du contrat…</p></div>
+
+    <div id="state-error" class="card hidden">
+      <div class="big-icon">⚠️</div>
+      <h2 style="margin:0 0 6px;font-size:18px;" id="error-title">Lien invalide</h2>
+      <p class="muted" id="error-text" style="margin:0;"></p>
+    </div>
+
+    <div id="state-signed" class="card hidden">
+      <div class="big-icon">✅</div>
+      <h2 style="margin:0 0 6px;font-size:18px;" id="signed-title">Contrat signé</h2>
+      <p id="signed-text" style="margin:0 0 8px;"></p>
+      <p class="muted" id="signed-fingerprint" style="margin:0;font-size:13px;"></p>
+      <p class="muted" style="margin:10px 0 0;font-size:13px;">Vous pouvez faire une capture d'écran de cette page pour conserver une preuve. Vous pouvez maintenant fermer cette page.</p>
+    </div>
+
+    <div id="state-contract" class="hidden">
+      <div class="card">
+        <h1 id="contract-title" style="margin:0 0 4px;font-size:20px;"></h1>
+        <p class="muted" id="contract-parties" style="margin:0 0 12px;font-size:13px;"></p>
+        <div id="contract-text" class="contract-text" tabindex="0"></div>
+        <p class="muted" id="contract-fingerprint" style="margin:8px 0 0;font-size:12px;"></p>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h2 style="margin:0 0 4px;font-size:17px;">Signer le contrat</h2>
+        <p class="muted" style="margin:0 0 8px;font-size:13px;">Lisez le contrat ci-dessus jusqu'à la fin, puis renseignez votre nom et signez.</p>
+
+        <label for="signer-name">Votre nom complet</label>
+        <input id="signer-name" maxlength="120" autocomplete="name" placeholder="Prénom et nom" />
+
+        <label>Votre signature (dessinez avec le doigt ou la souris)</label>
+        <div class="pad-box">
+          <canvas id="pad" width="560" height="180"></canvas>
+          <div class="pad-hint" id="pad-hint">Signez ici</div>
+        </div>
+        <div style="margin-top:6px;"><button class="secondary" id="btn-clear" type="button">Effacer la signature</button></div>
+
+        <div class="check-row">
+          <input type="checkbox" id="accept" />
+          <label for="accept">J'ai lu le contrat et j'accepte d'être lié(e) par ses conditions. Je reconnais que ma signature électronique ci-dessus vaut acceptation du contrat.</label>
+        </div>
+
+        <div id="sign-message"></div>
+        <div style="margin-top:14px;"><button id="btn-sign" type="button" style="width:100%;padding:12px 16px;font-size:16px;">Signer le contrat</button></div>
+        <p class="muted" style="margin:10px 0 0;font-size:12px;">
+          Votre nom, la date et l'heure, ainsi que votre adresse IP sont enregistrés comme preuve de signature.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var API = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) || '';
+      var token = new URLSearchParams(location.search).get('t') || '';
+
+      function $(id) { return document.getElementById(id); }
+      function show(id) {
+        ['state-loading', 'state-error', 'state-signed', 'state-contract'].forEach(function (s) {
+          $(s).classList.toggle('hidden', s !== id);
+        });
+      }
+      function fail(title, text) {
+        $('error-title').textContent = title;
+        $('error-text').textContent = text;
+        show('state-error');
+      }
+      function formatDate(iso) {
+        try { return new Date(iso).toLocaleString('fr-FR'); } catch (e) { return ''; }
+      }
+      function showSigned(name, iso, fingerprint) {
+        $('signed-text').textContent = 'Signé par ' + (name || '—') + (iso ? ' le ' + formatDate(iso) : '') + '.';
+        $('signed-fingerprint').textContent = fingerprint ? 'Empreinte du contrat : ' + fingerprint : '';
+        show('state-signed');
+      }
+      function showError(text) {
+        var box = $('sign-message');
+        box.textContent = '';
+        var div = document.createElement('div');
+        div.className = 'message error';
+        div.textContent = text;
+        box.appendChild(div);
+      }
+
+      // ---------- Chargement du contrat ----------
+      var fingerprint = null;
+
+      async function load() {
+        if (!token) return fail('Lien invalide', "Ce lien de signature est incomplet. Demandez à la personne qui vous l'a envoyé de vous le renvoyer.");
+        try {
+          var res = await fetch(API + '/api/public/contracts/' + encodeURIComponent(token));
+          var data = {};
+          try { data = await res.json(); } catch (e) { /* réponse non JSON */ }
+          if (res.status === 404) return fail('Lien invalide ou expiré', "Ce contrat n'existe plus ou a été annulé. Contactez la personne qui vous l'a envoyé.");
+          if (!res.ok) throw new Error(data.error || 'Erreur');
+
+          fingerprint = data.fingerprint;
+          if (data.status === 'signe') {
+            $('signed-title').textContent = 'Ce contrat est déjà signé';
+            return showSigned(data.signer_name, data.signed_at, data.fingerprint);
+          }
+
+          $('contract-title').textContent = data.title || 'Contrat';
+          var parties = [];
+          if (data.creator_name) parties.push('Envoyé par ' + data.creator_name);
+          if (data.counterparty_name) parties.push('Pour ' + data.counterparty_name);
+          $('contract-parties').textContent = parties.join(' · ');
+          $('contract-text').textContent = data.content || '';
+          $('contract-fingerprint').textContent = fingerprint ? 'Empreinte du texte : ' + fingerprint : '';
+          if (data.counterparty_name && !$('signer-name').value) $('signer-name').value = data.counterparty_name;
+          show('state-contract');
+        } catch (e) {
+          fail('Chargement impossible', 'Vérifiez votre connexion internet puis rechargez la page.');
+        }
+      }
+
+      // ---------- Zone de signature ----------
+      var canvas = $('pad');
+      var ctx = canvas.getContext('2d');
+      var drawing = false;
+      var hasDrawn = false;
+      var last = null;
+
+      function resetPad() {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        hasDrawn = false;
+        $('pad-hint').classList.remove('hidden');
+      }
+      function pointFrom(event) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+          x: (event.clientX - rect.left) * (canvas.width / rect.width),
+          y: (event.clientY - rect.top) * (canvas.height / rect.height),
+        };
+      }
+      canvas.addEventListener('pointerdown', function (event) {
+        event.preventDefault();
+        drawing = true;
+        last = pointFrom(event);
+        try { canvas.setPointerCapture(event.pointerId); } catch (e) { /* non supporté */ }
+        // Un simple point si l'utilisateur ne bouge pas.
+        ctx.beginPath();
+        ctx.arc(last.x, last.y, 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#111827';
+        ctx.fill();
+        hasDrawn = true;
+        $('pad-hint').classList.add('hidden');
+      });
+      canvas.addEventListener('pointermove', function (event) {
+        if (!drawing) return;
+        event.preventDefault();
+        var p = pointFrom(event);
+        ctx.beginPath();
+        ctx.moveTo(last.x, last.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        last = p;
+      });
+      function stop() { drawing = false; last = null; }
+      canvas.addEventListener('pointerup', stop);
+      canvas.addEventListener('pointercancel', stop);
+      canvas.addEventListener('pointerleave', stop);
+      $('btn-clear').addEventListener('click', resetPad);
+      resetPad();
+
+      // ---------- Envoi de la signature ----------
+      var signing = false;
+      $('btn-sign').addEventListener('click', async function () {
+        if (signing) return;
+        $('sign-message').textContent = '';
+
+        var name = $('signer-name').value.trim();
+        if (name.length < 2) return showError('Indiquez votre nom complet pour signer.');
+        if (!hasDrawn) return showError('Dessinez votre signature dans le cadre blanc.');
+        if (!$('accept').checked) return showError('Cochez la case pour confirmer que vous acceptez le contrat.');
+
+        var btn = $('btn-sign');
+        signing = true;
+        btn.disabled = true;
+        btn.textContent = 'Signature en cours…';
+
+        try {
+          var res = await fetch(API + '/api/public/contracts/' + encodeURIComponent(token) + '/sign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              signer_name: name,
+              accepted: true,
+              signature_image: canvas.toDataURL('image/png'),
+            }),
+          });
+          var data = {};
+          try { data = await res.json(); } catch (e) { /* réponse non JSON */ }
+          if (res.status === 409 && /déjà été signé/.test(data.error || '')) {
+            $('signed-title').textContent = 'Ce contrat est déjà signé';
+            return showSigned(null, null, fingerprint);
+          }
+          if (!res.ok) throw new Error(data.error || 'La signature a échoué.');
+
+          $('signed-title').textContent = 'Merci, le contrat est signé';
+          showSigned(name, data.signed_at, fingerprint);
+          window.scrollTo({ top: 0 });
+        } catch (e) {
+          var msg = e && e.message;
+          if (!msg || /Failed to fetch|NetworkError|Load failed/.test(msg)) msg = 'Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.';
+          showError(msg);
+          btn.disabled = false;
+          btn.textContent = 'Signer le contrat';
+          signing = false;
+        }
+      });
+
+      load();
+    })();
+  </script>
+</body>
+</html>
