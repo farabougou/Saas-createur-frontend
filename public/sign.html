@@ -51,7 +51,8 @@
       <h2 style="margin:0 0 6px;font-size:18px;" id="signed-title">Contrat signé</h2>
       <p id="signed-text" style="margin:0 0 8px;"></p>
       <p class="muted" id="signed-fingerprint" style="margin:0;font-size:13px;"></p>
-      <p class="muted" style="margin:10px 0 0;font-size:13px;">Vous pouvez faire une capture d'écran de cette page pour conserver une preuve. Vous pouvez maintenant fermer cette page.</p>
+      <p style="margin:14px 0 0;"><a id="btn-download" class="hidden" href="#" style="display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-weight:600;padding:11px 16px;border-radius:8px;">📄 Télécharger mon exemplaire (PDF)</a></p>
+      <p class="muted" style="margin:10px 0 0;font-size:13px;">Le PDF contient le contrat, votre signature et la preuve de signature. Vous pouvez ensuite fermer cette page.</p>
     </div>
 
     <div id="state-contract" class="hidden">
@@ -115,6 +116,11 @@
       function showSigned(name, iso, fingerprint) {
         $('signed-text').textContent = 'Signé par ' + (name || '—') + (iso ? ' le ' + formatDate(iso) : '') + '.';
         $('signed-fingerprint').textContent = fingerprint ? 'Empreinte du contrat : ' + fingerprint : '';
+        var tz = '';
+        try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
+        var download = $('btn-download');
+        download.href = API + '/api/public/contracts/' + encodeURIComponent(token) + '/pdf?tz=' + encodeURIComponent(tz);
+        download.classList.remove('hidden');
         show('state-signed');
       }
       function showError(text) {

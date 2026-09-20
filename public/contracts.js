@@ -6,7 +6,7 @@
 // éléments définis ailleurs (el, authHeadersOrNull, API_BASE_URL,
 // showMessage, clearMessage, escapeHtml, friendlyErrorMessage,
 // refreshCreditsBadge dans app.js ; phoneToWhatsappNumber, quoteNumber,
-// formatQuoteAmount dans quotes.js ; allContacts dans contacts.js ;
+// formatQuoteAmount, saveFileToDevice dans quotes.js ; allContacts dans contacts.js ;
 // allQuotes, allSponsorships) : ils ne sont utilisés qu'au moment où
 // l'utilisateur clique ou quand le tableau de bord se charge, une fois
 // tous les fichiers chargés.
@@ -101,6 +101,7 @@ function ensureContractsUI() {
     if (action === 'details') toggleContractDetails(contract);
     if (action === 'edit') openContractForm(contract);
     if (action === 'send') sendContract(contract, btn);
+    if (action === 'pdf') downloadContractPdf(contract, btn);
     if (action === 'whatsapp') openContractWhatsapp(contract);
     if (action === 'copy') copyContractLink(contract);
     if (action === 'cancel') cancelContract(contract, btn);
@@ -382,6 +383,40 @@ function showContractLinkMessage(contract, intro) {
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// Télécharge le contrat en PDF (avec la preuve de signature s'il est signé).
+async function downloadContractPdf(contract, btn) {
+  const messageEl = document.getElementById('contracts-message');
+  clearMessage(messageEl);
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    // Les dates du PDF s'affichent dans NOTRE fuseau horaire, pas celui du serveur.
+    let tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { tz = ''; }
+
+    const res = await fetch(`${API_BASE_URL}/api/contracts/${contract.id}/pdf?tz=${encodeURIComponent(tz)}`, { headers });
+    if (!res.ok) {
+      let message = 'Impossible de générer le PDF.';
+      try { message = (await res.json()).error || message; } catch { /* réponse non JSON */ }
+      throw new Error(message);
+    }
+    const blob = await res.blob();
+    const reference = `CT-${String(contract.id).replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    saveFileToDevice(new File([blob], `${reference}.pdf`, { type: 'application/pdf' }));
+  } catch (err) {
+    showMessage(messageEl, escapeHtml(friendlyErrorMessage(err)), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 async function sendContract(contract, btn) {
   const messageEl = document.getElementById('contracts-message');
   clearMessage(messageEl);
@@ -560,6 +595,7 @@ function renderContracts() {
         `<button class="secondary" data-contract-action="${action}" data-contract-id="${id}"${title ? ` title="${title}"` : ''}>${label}</button>`;
 
       const buttons = [btn('details', '📂 Voir')];
+      if (c.status !== 'annule') buttons.push(btn('pdf', '📄 PDF', 'Télécharger le contrat en PDF'));
       if (c.status === 'brouillon') {
         buttons.push(btn('edit', '✏️ Modifier'), btn('send', '📤 Envoyer'), btn('delete', '🗑', 'Supprimer ce brouillon'));
       } else if (c.status === 'envoye') {
