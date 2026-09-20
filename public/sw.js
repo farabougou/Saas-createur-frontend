@@ -6,7 +6,7 @@
 // le cache ne sert que de secours. Les appels vers le backend, Supabase et
 // Stripe (autres domaines) ne passent jamais par ici : aucune donnée de
 // compte n'est stockée dans le cache.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'sc-shell-' + VERSION;
 const SHELL = [
   '/offline.html',
@@ -14,6 +14,7 @@ const SHELL = [
   '/style.css',
   '/config.js',
   '/quotes.js',
+  '/contacts.js',
   '/app.js',
   '/mobile.js',
   '/pwa.js',

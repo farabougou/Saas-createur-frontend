@@ -369,6 +369,7 @@ async function loadDashboard() {
   await loadTikTokStatus(authHeaders);
   ensureStoryboardUI();
   ensureSponsorshipUI();
+  ensureContactsUI();
   ensureQuotesUI();
   ensurePersonaSectionUI();
   ensurePersonaDropdownUI();
@@ -376,6 +377,7 @@ async function loadDashboard() {
   ensureSubscriptionUI();
   await loadSponsorships();
   await loadQuotes();
+  await loadContacts();
   await loadPersonas();
   await refreshCreditsBadge();
   await loadReferralInfo();
