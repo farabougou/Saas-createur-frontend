@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.saascreateurs.app",
+      "sha256_cert_fingerprints": [
+        "97:9A:74:02:8C:04:AD:FD:13:C3:05:B7:AF:C1:7B:FD:FC:E1:3B:EC:76:F4:7A:B8:B4:52:63:B9:27:FA:32:17"
+      ]
+    }
+  }
+]
