@@ -13,6 +13,19 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <title>SaaS Créateurs — Créez, analysez et monétisez votre contenu</title>
   <meta name="description" content="SaaS Créateurs : la plateforme tout-en-un des créateurs francophones. Idées tendance, scripts, storyboards, réponses aux commentaires, sponsoring et devis avec paiement." />
+  <script>
+    // Application installée depuis un magasin (Google Play / App Store) : Google et Apple
+    // imposent leur propre système de paiement pour les achats dans l'application, donc on
+    // masque les offres payantes (elles restent disponibles sur le site web).
+    (function () {
+      try {
+        var store = window.sessionStorage;
+        var fromStore = document.referrer.indexOf('android-app://') === 0 || /[?&]app=(android|ios)(&|$)/.test(location.search);
+        if (fromStore) store.setItem('sc_store_app', '1');
+        if (store.getItem('sc_store_app') === '1') document.documentElement.classList.add('store-app');
+      } catch (e) { /* stockage indisponible : affichage normal */ }
+    })();
+  </script>
   <link rel="stylesheet" href="reset.css" />
   <link rel="stylesheet" href="style.css" />
   <meta name="tiktok-developers-site-verification" content="H4NBCZRPkaEtkICDCtFlNhJ1no2IoTq9" />
@@ -113,7 +126,7 @@
       <section class="lp-section lp-faq">
         <h2 class="lp-h2">Questions fréquentes</h2>
         <details><summary>Est-ce vraiment gratuit ?</summary><p>Oui : l'offre gratuite vous permet de découvrir l'outil sans carte bancaire. Les offres payantes ajoutent plus de puissance et la génération vidéo.</p></details>
-        <details><summary>Comment payer mon abonnement ?</summary><p>Par carte bancaire, sur une page de paiement sécurisée par Stripe. Nous ne voyons ni ne stockons les numéros de carte.</p></details>
+        <details class="billing-only"><summary>Comment payer mon abonnement ?</summary><p>Par carte bancaire, sur une page de paiement sécurisée par Stripe. Nous ne voyons ni ne stockons les numéros de carte.</p></details>
         <details><summary>Mes clients au Mali peuvent-ils me régler par Orange Money ?</summary><p>Oui. Sur vos devis, vous ajoutez votre numéro mobile money : il apparaît sur le PDF et dans le message WhatsApp, avec la référence du devis. Vous marquez ensuite le devis comme payé dès réception du transfert.</p></details>
       </section>
 
@@ -197,7 +210,7 @@
     </div>
 
     <footer>
-      <p><a href="privacy.html">Confidentialité</a> · <a href="terms.html">Conditions d'utilisation</a></p>
+      <p><a href="privacy.html">Confidentialité</a> · <a href="terms.html">Conditions d'utilisation</a> · <a href="suppression-compte.html">Suppression du compte</a></p>
       <p>SaaS Créateurs — propulsé par Supabase &amp; Railway. Service indépendant : TikTok est une marque de ses propriétaires respectifs.</p>
     </footer>
   </div>

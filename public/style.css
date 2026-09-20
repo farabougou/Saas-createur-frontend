@@ -898,3 +898,10 @@ button.danger:disabled {
 .auth-card form p {
   text-align: center;
 }
+
+/* ===================== Application installée depuis un magasin ===================== */
+html.store-app #subscription-section,
+html.store-app #plans-section,
+html.store-app .billing-only {
+  display: none !important;
+}

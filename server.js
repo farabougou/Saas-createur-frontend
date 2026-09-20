@@ -8,6 +8,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
+// Anciennes adresses des pages légales : on redirige vers les versions à jour
+// (une seule version de chaque texte à maintenir).
+app.get('/confidentialite.html', (req, res) => res.redirect(301, '/privacy.html'));
+app.get('/conditions-utilisation.html', (req, res) => res.redirect(301, '/terms.html'));
+
+// Dossier /.well-known (ex. assetlinks.json, qui relie l'application Android
+// à ce site). Express ignore par défaut les dossiers commençant par un point :
+// on l'autorise explicitement ici. Une adresse inconnue renvoie une vraie 404
+// (et non la page d'accueil), comme l'exigent Google et Apple.
+app.use(
+  '/.well-known',
+  express.static(path.join(__dirname, 'public', '.well-known'), { dotfiles: 'allow' })
+);
+app.use('/.well-known', (req, res) => res.status(404).end());
+
 // Sert tous les fichiers du dossier public/ (index.html, style.css, app.js,
 // config.js...) tels quels, comme le ferait n'importe quel hébergeur statique.
 app.use(express.static(path.join(__dirname, 'public')));
