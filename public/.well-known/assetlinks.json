@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.saascreateurs.app",
       "sha256_cert_fingerprints": [
-        "97:9A:74:02:8C:04:AD:FD:13:C3:05:B7:AF:C1:7B:FD:FC:E1:3B:EC:76:F4:7A:B8:B4:52:63:B9:27:FA:32:17"
+        "97:9A:74:02:8C:04:AD:FD:13:C3:05:B7:AF:C1:7B:FD:FC:E1:3B:EC:76:F4:7A:B8:B4:52:63:B9:27:FA:32:17",
+        "84:9C:AD:FC:07:21:91:00:41:19:5F:D4:7C:8C:EF:85:A1:50:FC:4D:6C:C3:B0:7A:23:05:B8:F0:3F:E9:54:72"
       ]
     }
   }
