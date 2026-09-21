@@ -86,6 +86,8 @@ function computeActivity() {
     total: activityMoneyText(total),
     pending: activityMoneyText(pending),
     todo,
+    // Pastilles rouges des onglets (voir tabs.js) : ce qui demande une action.
+    badges: { shop: toVerify + toShip, business: toSign + unpaidQuotes },
     stats: {
       contacts: contacts.length,
       orders: orders.filter((o) => ACTIVITY_PAID_ORDER.includes(o.status)).length,
@@ -153,6 +155,20 @@ function refreshActivityTile() {
   const body = document.getElementById('activity-body');
   if (!body) return;
   const a = computeActivity();
+  if (typeof window.refreshTabBadges === 'function') window.refreshTabBadges(a.badges);
+
+  const hour = new Date().getHours();
+  const urgentCount = a.todo.filter((t) => t.urgent).length;
+  const summary = urgentCount
+    ? `${urgentCount} ${urgentCount > 1 ? 'choses demandent' : 'chose demande'} votre attention.`
+    : a.todo.length
+      ? 'Rien d\'urgent, voici ce qu\'il reste à faire.'
+      : 'Tout est à jour.';
+  const greeting = `
+    <div style="margin-bottom:14px;">
+      <div style="font-size:20px;font-weight:700;">${hour >= 5 && hour < 18 ? 'Bonjour' : 'Bonsoir'} 👋</div>
+      <div class="muted" style="font-size:13px;margin-top:2px;">${escapeHtml(summary)}</div>
+    </div>`;
 
   const kpi = (label, value, color) => `
     <div style="padding:10px 12px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;">
@@ -176,6 +192,7 @@ function refreshActivityTile() {
     `<div style="text-align:center;"><div style="font-size:18px;font-weight:700;">${icon} ${value}</div><div class="muted" style="font-size:11px;">${escapeHtml(label)}</div></div>`;
 
   body.innerHTML = `
+    ${greeting}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
       ${kpi('Encaissé ce mois-ci', a.month, '#86efac')}
       ${kpi('Encaissé au total', a.total)}

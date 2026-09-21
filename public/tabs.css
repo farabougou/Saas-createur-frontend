@@ -167,3 +167,35 @@ body[data-active-tab='account'] .bento-grid > .bento-tile {
     padding: 6px 12px;
   }
 }
+
+/* Pastilles rouges sur les onglets (voir refreshTabBadges dans tabs.js). */
+.app-tabs button,
+.bottom-nav button {
+  position: relative;
+}
+.tab-badge {
+  position: absolute;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--bg-soft);
+  pointer-events: none;
+}
+.app-tabs .tab-badge {
+  position: static;
+  margin-left: 2px;
+  box-shadow: none;
+}
+.bottom-nav .tab-badge {
+  top: 2px;
+  left: calc(50% + 6px);
+}

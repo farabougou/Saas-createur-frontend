@@ -186,6 +186,29 @@
   };
   window.showTab = showTab;
 
+  // Petites pastilles rouges sur les onglets qui demandent une action.
+  // badges = { shop: 3, business: 1 } (calculé par dashboard.js).
+  window.refreshTabBadges = function (badges) {
+    var counts = badges || {};
+    ['shop', 'business'].forEach(function (key) {
+      var n = Number(counts[key]) || 0;
+      Array.prototype.forEach.call(document.querySelectorAll('button[data-tab="' + key + '"]'), function (button) {
+        var pill = button.querySelector('.tab-badge');
+        if (!n) {
+          if (pill) pill.remove();
+          return;
+        }
+        if (!pill) {
+          pill = document.createElement('i');
+          pill.className = 'tab-badge';
+          pill.setAttribute('aria-hidden', 'true');
+          button.appendChild(pill);
+        }
+        pill.textContent = n > 9 ? '9+' : String(n);
+      });
+    });
+  };
+
   // ---------- En-tête : crédits + pastille de profil (menu déroulant) ----------
   // app.js écrit dans #nav un e-mail et deux boutons. On garde ces mêmes boutons
   // (leurs actions restent intactes) mais on les range dans un petit menu.
