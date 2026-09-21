@@ -127,6 +127,8 @@ function ensureActivityTile() {
 
 // Ouvre la carte visée (repliée sur téléphone) et fait défiler jusqu'à elle.
 function activityGoto(cardId, orderFilter) {
+  // Affiche d'abord l'onglet qui contient la carte (voir tabs.js).
+  if (typeof window.showTabFor === 'function') window.showTabFor(cardId);
   const card = document.getElementById(cardId);
   if (!card) return;
 

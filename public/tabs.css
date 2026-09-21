@@ -1,0 +1,169 @@
+/* Onglets du tableau de bord (voir tabs.js). Ne change que l'affichage. */
+
+.tab-off {
+  display: none !important;
+}
+
+/* Barre d'onglets du haut : ordinateur et tablette. Sur téléphone, c'est la barre du bas. */
+.app-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  position: sticky;
+  top: 8px;
+  z-index: 50;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.app-tabs button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-tabs button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.app-tabs button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.app-tabs button span {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Barre du bas (téléphone) : l'onglet ouvert est mis en évidence. */
+.bottom-nav button.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 640px) {
+  .app-tabs {
+    display: none;
+  }
+}
+
+/* Accueil : « Statistiques » et « Actions rapides » sur la même ligne, sans trou. */
+@media (min-width: 860px) {
+  body[data-active-tab='home'] .bento-tile-stats {
+    grid-row: span 1;
+  }
+  body[data-active-tab='create'] .bento-grid .tile-radar {
+    grid-column: span 2;
+  }
+}
+@media (min-width: 641px) and (max-width: 859px) {
+  body[data-active-tab='home'] .bento-grid > .bento-tile {
+    grid-column: 1 / -1;
+  }
+}
+/* Compte : les tuiles prennent toute la largeur. */
+body[data-active-tab='account'] .bento-grid > .bento-tile {
+  grid-column: 1 / -1;
+}
+
+/* Business : ordre logique (contacts, sponsorings, devis, contrats). */
+#extra-tools {
+  display: flex;
+  flex-direction: column;
+}
+#extra-tools > * { order: 10; }
+#contacts-section { order: 1; }
+#sponsorship-section { order: 2; }
+#quotes-section { order: 3; }
+#contracts-section { order: 4; }
+
+/* ===================== En-tête : crédits + pastille de profil ===================== */
+#nav.nav-compact {
+  flex-wrap: nowrap;
+  gap: 10px;
+  width: auto;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+.top-header.header-compact {
+  flex-wrap: nowrap;
+}
+#nav.nav-compact #credits-badge {
+  background: rgba(99, 102, 241, 0.16);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--text);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.user-menu {
+  position: relative;
+}
+#nav .user-avatar {
+  width: 40px;
+  min-height: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  z-index: 1000;
+}
+.user-panel[hidden] {
+  display: none;
+}
+.user-panel-email {
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  word-break: break-all;
+}
+#nav .user-panel button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+@media (max-width: 640px) {
+  #nav.nav-compact {
+    width: auto;
+  }
+  #nav.nav-compact #credits-badge {
+    font-size: 14px;
+    padding: 6px 12px;
+  }
+}
