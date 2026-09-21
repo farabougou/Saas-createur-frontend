@@ -18,6 +18,7 @@ let shopOrders = [];
 let editingProductId = null;
 let shopOrderFilter = 'all';
 let shopSlugTouched = false;
+let productPendingUpload = null; // photo envoyée mais pas encore enregistrée sur un produit
 
 const SHOP_OPERATOR_LABELS = { orange: 'Orange Money', moov: 'Moov Money', wave: 'Wave' };
 
@@ -125,9 +126,17 @@ function ensureBoutiqueUI() {
             <label for="product-stock">Stock disponible (laissez vide pour un stock illimité)</label>
             <input id="product-stock" inputmode="numeric" placeholder="Ex : 10" />
           </div>
-          <label for="product-image">Adresse d'une photo (facultatif)</label>
-          <input id="product-image" maxlength="1000" placeholder="https://" autocapitalize="none" />
-          <div class="muted" style="font-size:12px;margin-top:4px;">L'envoi de photos depuis votre téléphone arrive bientôt.</div>
+          <label>Photo du produit (facultatif)</label>
+          <div id="product-image-box" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <div id="product-image-preview" style="width:84px;height:84px;border-radius:10px;border:1px dashed rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:28px;flex:none;">📷</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="secondary" id="btn-pick-image">Choisir une photo</button>
+              <button type="button" class="secondary hidden" id="btn-remove-image">Retirer</button>
+            </div>
+          </div>
+          <input id="product-image-file" type="file" accept="image/*" class="hidden" />
+          <input id="product-image" type="hidden" />
+          <div id="product-image-status" class="muted" style="font-size:12px;margin-top:4px;">Une photo bien lumineuse vend mieux. Elle est réduite automatiquement.</div>
           <label style="display:flex;gap:8px;align-items:center;margin-top:12px;color:var(--text);">
             <input id="product-active" type="checkbox" style="width:auto;" checked /> Visible dans la boutique
           </label>
@@ -171,6 +180,13 @@ function ensureBoutiqueUI() {
   document.getElementById('btn-cancel-product').addEventListener('click', closeProductForm);
   document.getElementById('btn-save-product').addEventListener('click', saveProduct);
   document.getElementById('product-kind').addEventListener('change', refreshProductFormKind);
+  document.getElementById('btn-pick-image').addEventListener('click', () => document.getElementById('product-image-file').click());
+  document.getElementById('btn-remove-image').addEventListener('click', removeProductImage);
+  document.getElementById('product-image-file').addEventListener('change', (event) => {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = ''; // permet de rechoisir la même photo
+    if (file) uploadProductImage(file);
+  });
   document.getElementById('shop-order-filter').addEventListener('change', (event) => {
     shopOrderFilter = event.target.value;
     renderShopOrders();
@@ -339,7 +355,8 @@ function openProductForm(product) {
   document.getElementById('product-price').value = product ? String(product.price_minor / 10 ** digits) : '';
   document.getElementById('product-digital').value = product?.digital_url || '';
   document.getElementById('product-stock').value = product && product.stock !== null ? String(product.stock) : '';
-  document.getElementById('product-image').value = product?.image_url || '';
+  discardPendingUpload(); // une photo envoyée pour un autre formulaire resté ouvert
+  setProductImage(product?.image_url || '');
   document.getElementById('product-active').checked = product ? Boolean(product.is_active) : true;
   refreshProductFormKind();
 
@@ -351,7 +368,116 @@ function openProductForm(product) {
 
 function closeProductForm() {
   editingProductId = null;
+  discardPendingUpload();
   document.getElementById('product-form').classList.add('hidden');
+}
+
+// ---------- Photo du produit ----------
+
+function setProductImage(url) {
+  const input = document.getElementById('product-image');
+  const preview = document.getElementById('product-image-preview');
+  input.value = url || '';
+  preview.textContent = '';
+  if (url && /^https?:\/\//i.test(url)) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+    img.addEventListener('error', () => { preview.textContent = '📷'; });
+    img.src = url;
+    preview.appendChild(img);
+  } else {
+    preview.textContent = '📷';
+  }
+  document.getElementById('btn-remove-image').classList.toggle('hidden', !url);
+  document.getElementById('btn-pick-image').textContent = url ? 'Changer la photo' : 'Choisir une photo';
+}
+
+// Photo envoyée pendant cette édition mais jamais enregistrée : on la supprime du serveur.
+async function discardPendingUpload() {
+  const url = productPendingUpload;
+  productPendingUpload = null;
+  if (!url) return;
+  try {
+    const headers = await authHeadersOrNull();
+    if (headers) await fetch(`${API_BASE_URL}/api/shop/images/delete`, { method: 'POST', headers, body: JSON.stringify({ url }) });
+  } catch {
+    // sans importance : la photo restera simplement inutilisée
+  }
+}
+
+function removeProductImage() {
+  discardPendingUpload();
+  setProductImage('');
+}
+
+// Réduit la photo (1200 px max, JPEG) avant l'envoi : rapide sur un réseau mobile.
+async function shopPrepareImage(file) {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = objectUrl;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error("Cette photo n'a pas pu être lue. Essayez une autre image."));
+    });
+    const render = (maxSide, quality) => {
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff'; // les PNG transparents deviennent blancs
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    };
+    let blob = await render(1200, 0.82);
+    if (blob && blob.size > 1_800_000) blob = await render(900, 0.6);
+    if (!blob || blob.size > 1_900_000) throw new Error('Cette photo est trop lourde. Choisissez-en une plus petite.');
+    return blob;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function uploadProductImage(file) {
+  const messageEl = document.getElementById('boutique-message');
+  const status = document.getElementById('product-image-status');
+  const pick = document.getElementById('btn-pick-image');
+  const save = document.getElementById('btn-save-product');
+  clearMessage(messageEl);
+  if (!file.type.startsWith('image/')) return showMessage(messageEl, 'Choisissez un fichier image (JPEG, PNG ou WebP).', 'error');
+
+  const headers = await authHeadersOrNull();
+  if (!headers) return;
+
+  pick.disabled = true;
+  save.disabled = true; // on n'enregistre pas le produit pendant l'envoi
+  status.textContent = 'Envoi de la photo…';
+  try {
+    const blob = await shopPrepareImage(file);
+    const res = await fetch(`${API_BASE_URL}/api/shop/images`, {
+      method: 'POST',
+      headers: { Authorization: headers.Authorization, 'Content-Type': 'image/jpeg' },
+      body: blob,
+    });
+    let data = {};
+    try { data = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(data.error || "L'envoi de la photo a échoué.");
+
+    await discardPendingUpload(); // une photo envoyée puis remplacée avant d'enregistrer
+    productPendingUpload = data.url;
+    setProductImage(data.url);
+    status.textContent = 'Photo prête. Pensez à enregistrer le produit.';
+  } catch (err) {
+    status.textContent = 'Une photo bien lumineuse vend mieux. Elle est réduite automatiquement.';
+    showMessage(messageEl, escapeHtml(friendlyErrorMessage(err)), 'error');
+  } finally {
+    pick.disabled = false;
+    save.disabled = false;
+  }
 }
 
 async function saveProduct() {
@@ -404,6 +530,7 @@ async function saveProduct() {
     let data = {};
     try { data = await res.json(); } catch { /* réponse non JSON */ }
     if (!res.ok) throw new Error(data.error || "Impossible d'enregistrer le produit.");
+    productPendingUpload = null; // la photo est désormais rattachée au produit
     closeProductForm();
     showMessage(messageEl, isEdit ? 'Produit modifié.' : 'Produit ajouté.', 'success');
     await loadBoutique();
@@ -474,7 +601,8 @@ function renderShopProducts() {
       return `
         <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,0.12);${p.is_active ? '' : 'opacity:0.6;'}">
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
-            <div style="flex:1;min-width:180px;">
+            ${p.image_url ? `<img data-product-img="${id}" alt="" width="52" height="52" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none;" />` : ''}
+            <div style="flex:1;min-width:150px;">
               <strong>${escapeHtml(p.name)}</strong> ${p.is_active ? '' : '<span class="muted">(masqué)</span>'}
               <div class="muted" style="font-size:13px;">${kind} · ${escapeHtml(formatQuoteAmount(p.price_minor, shopCurrency()))}${stock}</div>
               ${warning}
@@ -488,6 +616,16 @@ function renderShopProducts() {
         </div>`;
     })
     .join('');
+
+  // Les adresses de photos sont posées par le navigateur (jamais collées dans du HTML).
+  shopProducts.forEach((p) => {
+    if (!p.image_url || !/^https?:\/\//i.test(p.image_url)) return;
+    const img = listEl.querySelector(`img[data-product-img="${CSS.escape(String(p.id))}"]`);
+    if (img) {
+      img.referrerPolicy = 'no-referrer';
+      img.src = p.image_url;
+    }
+  });
 }
 
 // ---------- Commandes ----------
