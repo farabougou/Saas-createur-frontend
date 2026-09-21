@@ -372,6 +372,7 @@ async function loadDashboard() {
   ensureContactsUI();
   ensureQuotesUI();
   ensureContractsUI();
+  ensureBoutiqueUI();
   ensurePersonaSectionUI();
   ensurePersonaDropdownUI();
   ensureRepliesUI();
@@ -380,6 +381,7 @@ async function loadDashboard() {
   await loadQuotes();
   await loadContacts();
   await loadContracts();
+  await loadBoutique();
   await loadPersonas();
   await refreshCreditsBadge();
   await loadReferralInfo();

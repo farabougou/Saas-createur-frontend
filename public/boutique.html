@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a12" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Boutique</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/reset.css" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .shop-wrap { max-width: 980px; margin: 0 auto; padding: 16px 16px 60px; }
+    .shop-head { padding: 8px 0 18px; }
+    .shop-head h1 { margin: 0 0 6px; font-size: 26px; }
+    .shop-head p { margin: 0 0 10px; white-space: pre-wrap; line-height: 1.5; }
+    .wa-link { display: inline-block; background: #25d366; color: #063; text-decoration: none; font-weight: 600; padding: 9px 14px; border-radius: 8px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 12px; }
+    @media (min-width: 700px) { .grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; } }
+    .product { display: flex; flex-direction: column; padding: 0; overflow: hidden; margin: 0; }
+    .product .pic { width: 100%; aspect-ratio: 4 / 3; background: rgba(255, 255, 255, 0.04); display: flex; align-items: center; justify-content: center; font-size: 44px; overflow: hidden; }
+    .product .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .product .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+    .product h3 { margin: 0; font-size: 15px; word-break: break-word; }
+    .product .desc { margin: 0; font-size: 13px; color: var(--muted); white-space: pre-wrap; line-height: 1.45; }
+    .product .price { font-weight: 700; font-size: 17px; margin-top: auto; padding-top: 6px; }
+    .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); align-self: flex-start; }
+    .tag.warn { color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); }
+    .product button { width: 100%; margin-top: 8px; }
+    .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); display: flex; align-items: flex-end; justify-content: center; z-index: 50; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .sheet { background: var(--bg-soft); border: 1px solid var(--border); width: 100%; max-width: 520px; border-radius: 16px 16px 0 0; padding: 18px 16px 24px; margin-top: 40px; }
+    @media (min-width: 640px) { .overlay { align-items: center; } .sheet { border-radius: 16px; margin: 24px 0; } }
+    .sheet h2 { margin: 0 0 4px; font-size: 19px; }
+    .phone-row { display: flex; gap: 8px; }
+    .phone-row select { width: 42%; flex: none; }
+    .phone-row input { flex: 1; min-width: 0; }
+    .total-line { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 4px; font-size: 15px; }
+    .total-line strong { font-size: 20px; }
+    .empty { text-align: center; padding: 30px 10px; }
+    .big-icon { font-size: 40px; margin-bottom: 6px; }
+    .foot { margin-top: 30px; text-align: center; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="shop-wrap">
+    <div id="state-loading" class="card"><p class="muted" style="margin:0;">Chargement de la boutique…</p></div>
+
+    <div id="state-error" class="card hidden">
+      <div class="big-icon">🛍️</div>
+      <h2 style="margin:0 0 6px;font-size:18px;" id="error-title">Boutique introuvable</h2>
+      <p class="muted" id="error-text" style="margin:0;"></p>
+    </div>
+
+    <div id="state-shop" class="hidden">
+      <div class="shop-head">
+        <h1 id="shop-title"></h1>
+        <p id="shop-desc" class="muted"></p>
+        <a id="shop-wa" class="wa-link hidden" href="#" target="_blank" rel="noopener">💬 Écrire sur WhatsApp</a>
+      </div>
+      <div id="grid" class="grid"></div>
+      <p id="empty" class="muted empty hidden">Cette boutique n'a pas encore de produit. Revenez bientôt !</p>
+      <p class="muted foot">Paiement par Mobile Money : vous recevez les numéros de paiement juste après votre commande.</p>
+    </div>
+  </div>
+
+  <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="order-title">
+    <div class="sheet">
+      <h2 id="order-title">Commander</h2>
+      <p class="muted" id="order-product" style="margin:0 0 10px;font-size:14px;"></p>
+
+      <label for="f-qty" id="lbl-qty">Quantité</label>
+      <input id="f-qty" type="number" inputmode="numeric" min="1" max="20" value="1" />
+
+      <label for="f-name">Votre nom</label>
+      <input id="f-name" maxlength="120" autocomplete="name" placeholder="Prénom et nom" />
+
+      <label for="f-phone">Votre numéro WhatsApp</label>
+      <div class="phone-row">
+        <select id="f-cc" aria-label="Indicatif du pays">
+          <option value="223">🇲🇱 +223 Mali</option>
+          <option value="33">🇫🇷 +33 France</option>
+          <option value="221">🇸🇳 +221 Sénégal</option>
+          <option value="225">🇨🇮 +225 Côte d'Ivoire</option>
+          <option value="226">🇧🇫 +226 Burkina Faso</option>
+          <option value="224">🇬🇳 +224 Guinée</option>
+          <option value="227">🇳🇪 +227 Niger</option>
+          <option value="228">🇹🇬 +228 Togo</option>
+          <option value="229">🇧🇯 +229 Bénin</option>
+          <option value="222">🇲🇷 +222 Mauritanie</option>
+          <option value="212">🇲🇦 +212 Maroc</option>
+          <option value="213">🇩🇿 +213 Algérie</option>
+          <option value="216">🇹🇳 +216 Tunisie</option>
+          <option value="32">🇧🇪 +32 Belgique</option>
+          <option value="41">🇨🇭 +41 Suisse</option>
+          <option value="1">🇨🇦🇺🇸 +1 Canada / USA</option>
+          <option value="44">🇬🇧 +44 Royaume-Uni</option>
+        </select>
+        <input id="f-phone" type="tel" inputmode="tel" maxlength="30" autocomplete="tel-national" placeholder="70 00 00 00" />
+      </div>
+
+      <label for="f-email">E-mail (facultatif)</label>
+      <input id="f-email" type="email" maxlength="200" autocomplete="email" placeholder="vous@exemple.com" />
+
+      <div id="row-address" class="hidden">
+        <label for="f-address">Adresse de livraison</label>
+        <textarea id="f-address" rows="2" maxlength="500" placeholder="Ville, quartier, repère (ex. près du marché)"></textarea>
+      </div>
+
+      <label for="f-note">Message pour la boutique (facultatif)</label>
+      <textarea id="f-note" rows="2" maxlength="500" placeholder="Une précision ? Taille, couleur…"></textarea>
+
+      <div class="total-line"><span>Total à payer</span><strong id="order-total"></strong></div>
+      <p class="muted" style="margin:0 0 4px;font-size:12px;">Vous choisirez votre moyen de paiement à l'étape suivante.</p>
+
+      <div id="order-message"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="secondary" id="btn-cancel" type="button" style="flex:1;">Annuler</button>
+        <button id="btn-order" type="button" style="flex:2;">Commander</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/config.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var API = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) || '';
+      var params = new URLSearchParams(location.search);
+      var pathMatch = location.pathname.match(/^\/b\/([^/]+)\/?$/);
+      var slug = pathMatch ? decodeURIComponent(pathMatch[1]) : (params.get('s') || '');
+      var shop = null;
+      var products = [];
+      var current = null;
+
+      function $(id) { return document.getElementById(id); }
+      function show(id) {
+        ['state-loading', 'state-error', 'state-shop'].forEach(function (s) { $(s).classList.toggle('hidden', s !== id); });
+      }
+      function fail(title, text) {
+        $('error-title').textContent = title;
+        $('error-text').textContent = text;
+        show('state-error');
+      }
+      function money(minor, currency) {
+        if (currency === 'EUR') {
+          return (minor / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+        }
+        return Math.round(minor).toLocaleString('fr-FR') + ' FCFA';
+      }
+      function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = text;
+        return node;
+      }
+      function safeImage(url) {
+        return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
+      }
+
+      // ---------- Vitrine ----------
+      function renderProducts() {
+        var grid = $('grid');
+        grid.textContent = '';
+        $('empty').classList.toggle('hidden', products.length > 0);
+        products.forEach(function (p) {
+          var card = el('div', 'card product');
+
+          var pic = el('div', 'pic');
+          var src = safeImage(p.image_url);
+          if (src) {
+            var img = document.createElement('img');
+            img.alt = p.name;
+            img.loading = 'lazy';
+            img.referrerPolicy = 'no-referrer';
+            img.src = src;
+            img.addEventListener('error', function () { pic.textContent = p.kind === 'numerique' ? '📄' : '📦'; });
+            pic.appendChild(img);
+          } else {
+            pic.textContent = p.kind === 'numerique' ? '📄' : '📦';
+          }
+          card.appendChild(pic);
+
+          var body = el('div', 'body');
+          body.appendChild(el('span', 'tag', p.kind === 'numerique' ? 'Produit numérique' : 'Produit physique'));
+          body.appendChild(el('h3', '', p.name));
+          if (p.description) body.appendChild(el('p', 'desc', p.description));
+          if (p.low_stock) body.appendChild(el('span', 'tag warn', 'Plus que ' + p.low_stock + ' en stock'));
+          body.appendChild(el('div', 'price', money(p.price_minor, shop.currency)));
+
+          var btn = el('button', '', p.available ? 'Commander' : 'Épuisé');
+          btn.type = 'button';
+          btn.disabled = !p.available;
+          if (p.available) btn.addEventListener('click', function () { openOrder(p); });
+          body.appendChild(btn);
+
+          card.appendChild(body);
+          grid.appendChild(card);
+        });
+      }
+
+      async function load() {
+        if (!slug) return fail('Boutique introuvable', "Ce lien est incomplet. Demandez à la boutique de vous le renvoyer.");
+        try {
+          var res = await fetch(API + '/api/public/shops/' + encodeURIComponent(slug));
+          var data = {};
+          try { data = await res.json(); } catch (e) { /* réponse non JSON */ }
+          if (res.status === 404) return fail('Boutique introuvable', "Cette boutique n'existe pas ou n'est pas ouverte pour le moment.");
+          if (!res.ok) throw new Error(data.error || 'Erreur');
+
+          shop = data.shop;
+          products = data.products || [];
+          document.title = shop.name + ' — Boutique';
+          $('shop-title').textContent = shop.name;
+          $('shop-desc').textContent = shop.description || '';
+          $('shop-desc').classList.toggle('hidden', !shop.description);
+          var digits = String(shop.whatsapp || '').replace(/\D/g, '');
+          var wa = $('shop-wa');
+          if (digits) {
+            wa.href = 'https://wa.me/' + digits + '?text=' + encodeURIComponent('Bonjour, j\'ai une question sur votre boutique ' + shop.name + '.');
+            wa.classList.remove('hidden');
+          }
+          renderProducts();
+          show('state-shop');
+        } catch (e) {
+          fail('Chargement impossible', 'Vérifiez votre connexion internet puis rechargez la page.');
+        }
+      }
+
+      // ---------- Commande ----------
+      function updateTotal() {
+        if (!current) return;
+        var qty = parseInt($('f-qty').value, 10);
+        if (!Number.isInteger(qty) || qty < 1) qty = 1;
+        $('order-total').textContent = money(current.price_minor * Math.min(qty, 20), shop.currency);
+      }
+      function orderError(text) {
+        var box = $('order-message');
+        box.textContent = '';
+        if (!text) return;
+        var div = el('div', 'message error', text);
+        box.appendChild(div);
+      }
+      function openOrder(product) {
+        current = product;
+        $('order-product').textContent = product.name + ' — ' + money(product.price_minor, shop.currency) + (product.kind === 'numerique' ? ' · livraison par lien de téléchargement' : ' · livraison à domicile');
+        $('f-qty').value = '1';
+        // Un produit numérique se prend en un seul exemplaire.
+        $('f-qty').classList.toggle('hidden', product.kind === 'numerique');
+        $('lbl-qty').classList.toggle('hidden', product.kind === 'numerique');
+        $('row-address').classList.toggle('hidden', product.kind !== 'physique');
+        orderError('');
+        updateTotal();
+        $('overlay').classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        setTimeout(function () { $('f-name').focus(); }, 50);
+      }
+      function closeOrder() {
+        $('overlay').classList.add('hidden');
+        document.body.style.overflow = '';
+        current = null;
+      }
+
+      // Indicatif + numéro local -> +22370000000 (le "0" de tête est retiré).
+      function buildPhone() {
+        var raw = $('f-phone').value.trim();
+        if (!raw) return '';
+        if (raw.charAt(0) === '+' || raw.indexOf('00') === 0) return raw;
+        var digits = raw.replace(/\D/g, '').replace(/^0+/, '');
+        return '+' + $('f-cc').value + digits;
+      }
+
+      var ordering = false;
+      async function submitOrder() {
+        if (ordering || !current) return;
+        orderError('');
+        var name = $('f-name').value.trim();
+        if (name.length < 2) return orderError('Indiquez votre nom.');
+        var phone = buildPhone();
+        if (!phone || phone.replace(/\D/g, '').length < 8) return orderError('Indiquez votre numéro WhatsApp.');
+        var qty = current.kind === 'numerique' ? 1 : parseInt($('f-qty').value, 10);
+        if (!Number.isInteger(qty) || qty < 1 || qty > 20) return orderError('La quantité doit être comprise entre 1 et 20.');
+        var address = $('f-address').value.trim();
+        if (current.kind === 'physique' && address.length < 5) return orderError('Indiquez votre adresse de livraison (ville, quartier, repère).');
+
+        var btn = $('btn-order');
+        ordering = true;
+        btn.disabled = true;
+        btn.textContent = 'Envoi…';
+        try {
+          var res = await fetch(API + '/api/public/shops/' + encodeURIComponent(slug) + '/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              product_id: current.id,
+              quantity: qty,
+              buyer_name: name,
+              buyer_phone: phone,
+              buyer_email: $('f-email').value.trim(),
+              delivery_address: current.kind === 'physique' ? address : '',
+              buyer_note: $('f-note').value.trim(),
+            }),
+          });
+          var data = {};
+          try { data = await res.json(); } catch (e) { /* réponse non JSON */ }
+          if (!res.ok) throw new Error(data.error || 'La commande a échoué.');
+          // Étape suivante : la page de paiement et de suivi de la commande.
+          location.href = '/commande.html?t=' + encodeURIComponent(data.access_token);
+        } catch (e) {
+          var msg = e && e.message;
+          if (!msg || /Failed to fetch|NetworkError|Load failed/.test(msg)) msg = 'Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.';
+          orderError(msg);
+          btn.disabled = false;
+          btn.textContent = 'Commander';
+          ordering = false;
+        }
+      }
+
+      $('f-qty').addEventListener('input', updateTotal);
+      $('btn-cancel').addEventListener('click', closeOrder);
+      $('btn-order').addEventListener('click', submitOrder);
+      $('overlay').addEventListener('click', function (event) { if (event.target === $('overlay')) closeOrder(); });
+      document.addEventListener('keydown', function (event) { if (event.key === 'Escape' && current) closeOrder(); });
+
+      // Retour arrière depuis la page de commande : le bouton doit être réutilisable.
+      window.addEventListener('pageshow', function () {
+        ordering = false;
+        $('btn-order').disabled = false;
+        $('btn-order').textContent = 'Commander';
+      });
+
+      load();
+    })();
+  </script>
+</body>
+</html>

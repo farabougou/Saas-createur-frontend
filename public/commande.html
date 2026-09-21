@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a12" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Ma commande</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/reset.css" />
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .order-wrap { max-width: 620px; margin: 0 auto; padding: 16px 16px 60px; }
+    .brand { font-size: 14px; color: var(--muted); padding: 8px 0 16px; }
+    .big-icon { font-size: 40px; margin-bottom: 6px; }
+    .status-pill { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid var(--border); }
+    .status-pill.wait { color: #f59e0b; border-color: rgba(245, 158, 11, 0.45); }
+    .status-pill.ok { color: var(--success); border-color: rgba(34, 197, 94, 0.45); }
+    .status-pill.ko { color: var(--error); border-color: rgba(239, 68, 68, 0.45); }
+    .kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .kv:last-child { border-bottom: 0; }
+    .kv span:first-child { color: var(--muted); }
+    .kv span:last-child { text-align: right; word-break: break-word; }
+    .pay-method { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; background: rgba(0, 0, 0, 0.2); }
+    .pay-method .op { font-weight: 600; font-size: 14px; }
+    .pay-method .num { font-size: 17px; letter-spacing: 0.3px; }
+    .pay-method button { padding: 7px 12px; font-size: 13px; flex: none; }
+    .amount { font-size: 26px; font-weight: 700; margin: 4px 0; }
+    .note { white-space: pre-wrap; font-size: 13px; line-height: 1.5; padding: 10px 12px; border-radius: 10px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.25); margin-top: 10px; }
+    .btn-link { display: block; text-align: center; text-decoration: none; font-weight: 600; padding: 12px 16px; border-radius: 8px; margin-top: 12px; }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-wa { background: #25d366; color: #063; }
+    ol.steps { margin: 8px 0 0; padding-left: 22px; font-size: 14px; line-height: 1.6; list-style: decimal; }
+    ol.steps li { display: list-item; list-style: decimal; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="order-wrap">
+    <div class="brand" id="brand">Suivi de commande</div>
+
+    <div id="state-loading" class="card"><p class="muted" style="margin:0;">Chargement de votre commande…</p></div>
+
+    <div id="state-error" class="card hidden">
+      <div class="big-icon">⚠️</div>
+      <h2 style="margin:0 0 6px;font-size:18px;" id="error-title">Commande introuvable</h2>
+      <p class="muted" id="error-text" style="margin:0;"></p>
+    </div>
+
+    <div id="state-order" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <h1 style="margin:0;font-size:20px;" id="o-ref"></h1>
+          <span id="o-status" class="status-pill"></span>
+        </div>
+        <p id="o-status-text" style="margin:10px 0 0;font-size:14px;line-height:1.5;"></p>
+        <div id="o-action-top"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h2 style="margin:0 0 6px;font-size:16px;">Récapitulatif</h2>
+        <div id="o-summary"></div>
+      </div>
+
+      <div id="card-pay" class="card hidden" style="margin-top:16px;">
+        <h2 style="margin:0 0 4px;font-size:17px;">Comment payer</h2>
+        <ol class="steps">
+          <li>Envoyez le montant exact ci-dessous par Mobile Money à l'un des numéros.</li>
+          <li>Vous recevez un SMS de confirmation avec un <strong>numéro de transaction</strong>.</li>
+          <li>Revenez ici, indiquez ce numéro et appuyez sur « J'ai payé ».</li>
+        </ol>
+        <div class="amount" id="pay-amount"></div>
+        <div id="pay-methods"></div>
+        <div id="pay-note" class="note hidden"></div>
+
+        <div id="declare-form" style="margin-top:16px;">
+          <label for="d-operator">Moyen de paiement utilisé</label>
+          <select id="d-operator"></select>
+          <label for="d-ref">Numéro de transaction (reçu par SMS)</label>
+          <input id="d-ref" maxlength="60" autocomplete="off" placeholder="Ex. MP240921.1234.A56789" />
+          <div id="d-message"></div>
+          <div style="margin-top:14px;"><button id="btn-declare" type="button" style="width:100%;padding:12px 16px;font-size:16px;">J'ai payé</button></div>
+        </div>
+      </div>
+
+      <div id="card-actions" class="card hidden" style="margin-top:16px;">
+        <div id="actions-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/config.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var API = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) || '';
+      var token = new URLSearchParams(location.search).get('t') || '';
+      var order = null;
+      var pollTimer = null;
+      var editingDeclaration = false;
+
+      function $(id) { return document.getElementById(id); }
+      function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = text;
+        return node;
+      }
+      function show(id) {
+        ['state-loading', 'state-error', 'state-order'].forEach(function (s) { $(s).classList.toggle('hidden', s !== id); });
+      }
+      function fail(title, text) {
+        $('error-title').textContent = title;
+        $('error-text').textContent = text;
+        show('state-error');
+      }
+      function money(minor, currency) {
+        if (currency === 'EUR') return (minor / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+        return Math.round(minor).toLocaleString('fr-FR') + ' FCFA';
+      }
+      function formatDate(iso) {
+        try { return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; }
+      }
+      function message(boxId, text) {
+        var box = $(boxId);
+        box.textContent = '';
+        if (text) box.appendChild(el('div', 'message error', text));
+      }
+      function networkMessage(e) {
+        var msg = e && e.message;
+        if (!msg || /Failed to fetch|NetworkError|Load failed/.test(msg)) return 'Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.';
+        return msg;
+      }
+      function whatsappHref(text) {
+        var digits = order && order.shop ? String(order.shop.whatsapp || '').replace(/\D/g, '') : '';
+        return digits ? 'https://wa.me/' + digits + '?text=' + encodeURIComponent(text) : null;
+      }
+      function copyText(text, button) {
+        function done() {
+          var old = button.textContent;
+          button.textContent = 'Copié ✓';
+          setTimeout(function () { button.textContent = old; }, 1500);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () { /* copie refusée */ });
+        } else {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); done(); } catch (e) { /* non supporté */ }
+          document.body.removeChild(ta);
+        }
+      }
+
+      var STATUS = {
+        en_attente: { label: 'En attente de paiement', cls: 'wait', text: "Votre commande est enregistrée. Payez par Mobile Money en suivant les étapes ci-dessous." },
+        paiement_declare: { label: 'Paiement à vérifier', cls: 'wait', text: "Merci ! La boutique vérifie votre paiement. Vous recevrez votre commande dès qu'il sera confirmé." },
+        paye: { label: 'Payée', cls: 'ok', text: 'Votre paiement est confirmé. Merci pour votre achat !' },
+        expedie: { label: 'Expédiée', cls: 'ok', text: 'Votre commande est en route.' },
+        livre: { label: 'Livrée', cls: 'ok', text: 'Votre commande est livrée. Merci pour votre confiance !' },
+        annule: { label: 'Annulée', cls: 'ko', text: 'Cette commande a été annulée.' },
+      };
+
+      function summaryRow(label, value) {
+        var row = el('div', 'kv');
+        row.appendChild(el('span', '', label));
+        row.appendChild(el('span', '', value));
+        return row;
+      }
+
+      function render() {
+        var st = STATUS[order.status] || { label: order.status, cls: '', text: '' };
+        var shopName = order.shop && order.shop.name ? order.shop.name : 'Boutique';
+        document.title = 'Commande ' + order.reference + ' — ' + shopName;
+        $('brand').textContent = shopName + ' · Suivi de commande';
+        $('o-ref').textContent = 'Commande ' + order.reference;
+        var pill = $('o-status');
+        pill.textContent = st.label;
+        pill.className = 'status-pill ' + st.cls;
+        $('o-status-text').textContent = st.text;
+
+        var summary = $('o-summary');
+        summary.textContent = '';
+        summary.appendChild(summaryRow('Produit', order.product_name));
+        summary.appendChild(summaryRow('Quantité', String(order.quantity)));
+        if (order.quantity > 1) summary.appendChild(summaryRow('Prix unitaire', money(order.unit_price_minor, order.currency)));
+        summary.appendChild(summaryRow('Total', money(order.total_minor, order.currency)));
+        summary.appendChild(summaryRow('Commande passée le', formatDate(order.created_at)));
+        if (order.delivery_address) summary.appendChild(summaryRow('Livraison à', order.delivery_address));
+        if (order.payment_operator && order.payment_reference) {
+          var opLabel = { orange: 'Orange Money', moov: 'Moov Money', wave: 'Wave' }[order.payment_operator] || order.payment_operator;
+          summary.appendChild(summaryRow('Paiement déclaré', opLabel + ' · ' + order.payment_reference));
+        }
+
+        // --- Bloc « Comment payer » ---
+        var payCard = $('card-pay');
+        var awaiting = order.status === 'en_attente' || order.status === 'paiement_declare';
+        var showPay = order.status === 'en_attente' || (order.status === 'paiement_declare' && editingDeclaration);
+        payCard.classList.toggle('hidden', !(awaiting && order.payment && showPay));
+        if (awaiting && order.payment && showPay) {
+          $('pay-amount').textContent = money(order.total_minor, order.currency);
+          var methods = $('pay-methods');
+          methods.textContent = '';
+          var select = $('d-operator');
+          var previous = select.value;
+          select.textContent = '';
+          order.payment.methods.forEach(function (m) {
+            var row = el('div', 'pay-method');
+            var left = el('div');
+            left.appendChild(el('div', 'op', m.label));
+            left.appendChild(el('div', 'num', m.number));
+            row.appendChild(left);
+            var copy = el('button', 'secondary', 'Copier');
+            copy.type = 'button';
+            copy.addEventListener('click', function () { copyText(m.number, copy); });
+            row.appendChild(copy);
+            methods.appendChild(row);
+
+            var option = document.createElement('option');
+            option.value = m.operator;
+            option.textContent = m.label;
+            select.appendChild(option);
+          });
+          if (previous && order.payment.methods.some(function (m) { return m.operator === previous; })) select.value = previous;
+          else if (order.payment_operator) select.value = order.payment_operator;
+          if (order.payment_reference && !$('d-ref').value) $('d-ref').value = order.payment_reference;
+          var note = $('pay-note');
+          note.textContent = order.payment.note || '';
+          note.classList.toggle('hidden', !order.payment.note);
+          $('btn-declare').textContent = order.status === 'paiement_declare' ? 'Mettre à jour ma déclaration' : "J'ai payé";
+        }
+
+        // --- Actions selon l'état ---
+        var actions = $('actions-body');
+        actions.textContent = '';
+        var any = false;
+
+        if (order.status === 'paiement_declare' && !editingDeclaration) {
+          var fix = el('button', 'secondary', "Corriger le numéro de transaction");
+          fix.type = 'button';
+          fix.style.width = '100%';
+          fix.addEventListener('click', function () { editingDeclaration = true; render(); });
+          actions.appendChild(fix);
+          any = true;
+        }
+
+        var paid = order.status === 'paye' || order.status === 'expedie' || order.status === 'livre';
+        if (paid && order.product_kind === 'numerique') {
+          if (order.download_url) {
+            actions.appendChild(el('h2', '', 'Votre produit'));
+            actions.lastChild.style.cssText = 'margin:0 0 4px;font-size:16px;';
+            var dl = el('a', 'btn-link btn-accent', '⬇️ Accéder à mon produit');
+            dl.href = order.download_url;
+            dl.target = '_blank';
+            dl.rel = 'noopener noreferrer';
+            actions.appendChild(dl);
+            actions.appendChild(el('p', 'muted', 'Conservez cette page : vous pourrez y revenir pour retrouver votre produit.'));
+            actions.lastChild.style.cssText = 'margin:10px 0 0;font-size:12px;';
+          } else {
+            actions.appendChild(el('p', 'muted', "Votre paiement est confirmé, mais le lien du produit n'est pas encore disponible. Contactez la boutique."));
+          }
+          any = true;
+        }
+
+        var wa = whatsappHref('Bonjour, je vous écris au sujet de ma commande ' + order.reference + ' (' + order.product_name + ').');
+        if (wa && order.status !== 'annule') {
+          var waLink = el('a', 'btn-link btn-wa', '💬 Contacter la boutique sur WhatsApp');
+          waLink.href = wa;
+          waLink.target = '_blank';
+          waLink.rel = 'noopener noreferrer';
+          actions.appendChild(waLink);
+          any = true;
+        }
+
+        if (order.status === 'en_attente') {
+          var cancel = el('button', 'secondary', 'Annuler ma commande');
+          cancel.type = 'button';
+          cancel.style.cssText = 'width:100%;margin-top:12px;';
+          cancel.addEventListener('click', cancelOrder);
+          actions.appendChild(cancel);
+          any = true;
+        }
+        $('card-actions').classList.toggle('hidden', !any);
+        show('state-order');
+        schedulePoll();
+      }
+
+      // Actualisation automatique tant que la commande évolue.
+      function schedulePoll() {
+        clearTimeout(pollTimer);
+        var active = order && (order.status === 'paiement_declare' || order.status === 'paye' || order.status === 'expedie');
+        if (active && !editingDeclaration) pollTimer = setTimeout(function () { load(true); }, 30000);
+      }
+
+      async function load(silent) {
+        if (!token) return fail('Lien invalide', "Ce lien de commande est incomplet. Utilisez le lien qui s'est affiché après votre commande.");
+        try {
+          var res = await fetch(API + '/api/public/orders/' + encodeURIComponent(token));
+          var data = {};
+          try { data = await res.json(); } catch (e) { /* réponse non JSON */ }
+          if (res.status === 404) return fail('Commande introuvable', "Vérifiez le lien qui vous a été envoyé, ou contactez la boutique.");
+          if (!res.ok) throw new Error(data.error || 'Erreur');
+          order = data;
+          render();
+        } catch (e) {
+          if (!silent) fail('Chargement impossible', 'Vérifiez votre connexion internet puis rechargez la page.');
+          else schedulePoll();
+        }
+      }
+
+      var declaring = false;
+      $('btn-declare').addEventListener('click', async function () {
+        if (declaring) return;
+        message('d-message', '');
+        var reference = $('d-ref').value.trim();
+        if (reference.length < 3) return message('d-message', 'Indiquez le numéro de transaction reçu par SMS.');
+        var btn = $('btn-declare');
+        var label = btn.textContent;
+        declaring = true;
+        btn.disabled = true;
+        btn.textContent = 'Envoi…';
+        try {
+          var res = await fetch(API + '/api/public/orders/' + encodeURIComponent(token) + '/declare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payment_operator: $('d-operator').value, payment_reference: reference }),
+          });
+          var data = {};
+          try { data = await res.json(); } catch (e) { /* réponse non JSON */ }
+          if (!res.ok) throw new Error(data.error || "L'envoi a échoué.");
+          editingDeclaration = false;
+          await load(true);
+          window.scrollTo({ top: 0 });
+        } catch (e) {
+          message('d-message', networkMessage(e));
+          btn.textContent = label;
+        } finally {
+          declaring = false;
+          btn.disabled = false;
+        }
+      });
+
+      async function cancelOrder() {
+        if (!window.confirm('Annuler cette commande ?')) return;
+        try {
+          var res = await fetch(API + '/api/public/orders/' + encodeURIComponent(token) + '/cancel', { method: 'POST' });
+          var data = {};
+          try { data = await res.json(); } catch (e) { /* réponse non JSON */ }
+          if (!res.ok) throw new Error(data.error || "L'annulation a échoué.");
+          await load(true);
+        } catch (e) {
+          window.alert(networkMessage(e));
+          await load(true);
+        }
+      }
+
+      load(false);
+    })();
+  </script>
+</body>
+</html>

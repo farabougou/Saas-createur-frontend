@@ -27,6 +27,12 @@ app.use('/.well-known', (req, res) => res.status(404).end());
 // config.js...) tels quels, comme le ferait n'importe quel hébergeur statique.
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Vitrine publique d'une boutique : https://.../b/nom-de-la-boutique
+// (la page lit le nom dans l'adresse et charge la boutique depuis le backend).
+app.get('/b/:slug', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'boutique.html'));
+});
+
 // Si quelqu'un visite une adresse qui n'existe pas (ex: rechargement de page
 // sur une route gérée côté JavaScript), on renvoie quand même index.html
 // plutôt qu'une erreur 404 — c'est le comportement standard pour un site
